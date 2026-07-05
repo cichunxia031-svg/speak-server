@@ -219,6 +219,19 @@ async def api_credits(request: Request):
     })
 
 
+@mcp.custom_route("/api/latest", methods=["GET"])
+async def api_latest(request: Request):
+    if not _authed(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, created_at FROM lines ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        ).fetchone()
+    if not row:
+        return JSONResponse({"id": None, "created_at": 0})
+    return JSONResponse({"id": row["id"], "created_at": row["created_at"]})
+
+
 @mcp.custom_route("/api/auth", methods=["POST"])
 async def api_auth(request: Request):
     body = await request.json()
@@ -303,6 +316,12 @@ header{padding:34px 0 10px}
   border-radius:999px;font-size:13px;cursor:pointer;letter-spacing:.08em;transition:.25s;
 }
 .tabs button.on{border-color:var(--amber);color:var(--amber)}
+.duty{margin-left:auto;display:flex;align-items:center;gap:7px}
+.duty .dot{width:7px;height:7px;border-radius:50%;background:var(--dim);transition:.3s}
+.duty.on .dot{background:var(--amber);animation:onair 1.6s ease-in-out infinite}
+@keyframes onair{0%,100%{box-shadow:0 0 0 0 rgba(224,164,88,.5)}50%{box-shadow:0 0 0 6px rgba(224,164,88,0)}}
+.duty button{background:none;border:1px solid var(--line);color:var(--dim);padding:6px 14px;border-radius:999px;font-size:13px;cursor:pointer;letter-spacing:.08em;transition:.25s}
+.duty.on button{border-color:var(--amber);color:var(--amber)}
 
 /* ---- 卡片 ---- */
 .card{
@@ -380,6 +399,10 @@ footer{margin-top:44px;text-align:center;color:var(--dim);font-size:11px;font-fa
     <div class="tabs">
       <button id="tabAll" class="on" onclick="setTab(0)">全部信号</button>
       <button id="tabStar" onclick="setTab(1)">精读收藏</button>
+      <div class="duty" id="duty">
+        <span class="dot"></span>
+        <button onclick="toggleDuty()" id="dutyBtn">值班</button>
+      </div>
     </div>
   </header>
   <main id="list"></main>
@@ -518,6 +541,47 @@ async function del(id){
   await api('/api/line/'+id,{method:'DELETE'});
   load();
 }
+
+/* ---- 值班模式 ---- */
+let DUTY=false, dutyTimer=null, lastSeen=null;
+
+function toggleDuty(){
+  DUTY = !DUTY;
+  const el = document.getElementById('duty');
+  el.classList.toggle('on',DUTY);
+  document.getElementById('dutyBtn').textContent = DUTY ? 'ON AIR' : '值班';
+  if(DUTY){
+    // 用这次点击解锁自动播放权限
+    try{ const u=new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='); u.play().catch(()=>{}); }catch(e){}
+    fetch('/api/latest',{headers:{'X-Station-Key':KEY}}).then(r=>r.json()).then(d=>{ lastSeen=d.id; });
+    dutyTimer = setInterval(pollDuty, 5000);
+  } else {
+    clearInterval(dutyTimer); dutyTimer=null;
+  }
+}
+
+async function pollDuty(){
+  if(document.hidden) return; // 后台不打扰、不耗电
+  try{
+    const r = await api('/api/latest'); const d = await r.json();
+    if(d.id && d.id !== lastSeen){
+      lastSeen = d.id;
+      await load();
+      const card = document.getElementById('card-'+d.id);
+      if(card){
+        const btn = card.querySelector('.playbtn');
+        const onclick = btn.getAttribute('onclick');
+        const url = onclick.match(/'([^']*\.mp3)'/);
+        if(url) play(d.id, url[1]);
+        card.scrollIntoView({behavior:'smooth',block:'center'});
+      }
+    }
+  }catch(e){}
+}
+
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden && DUTY) pollDuty(); // 切回来立刻补播错过的
+});
 
 if(KEY){
   fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:KEY})})
