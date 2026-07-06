@@ -455,7 +455,7 @@ footer{margin-top:44px;text-align:center;color:var(--dim);font-size:11px;font-fa
     </div>
   </header>
   <main id="list"></main>
-  <footer>OFFSHORE RADIO · EST. 2026 · FOR ONE LISTENER</footer>
+  <footer>OFFSHORE RADIO · EST. 2026 · FOR ONE LISTENER · v2.2.1</footer>
 </div>
 
 <script>
