@@ -62,9 +62,17 @@ with db() as _c:
             vocab TEXT DEFAULT '[]',
             starred INTEGER DEFAULT 0,
             surprise INTEGER DEFAULT 0,
+            burn INTEGER DEFAULT 0,
+            burned_at INTEGER DEFAULT 0,
             created_at INTEGER NOT NULL
         )"""
     )
+    for col, ddl in [("burn", "ALTER TABLE lines ADD COLUMN burn INTEGER DEFAULT 0"),
+                     ("burned_at", "ALTER TABLE lines ADD COLUMN burned_at INTEGER DEFAULT 0")]:
+        try:
+            _c.execute(ddl)
+        except sqlite3.OperationalError:
+            pass
 
 
 def _authed(request: Request) -> bool:
@@ -80,6 +88,7 @@ async def speak(
     title: str = "",
     vocab: str = "[]",
     surprise: bool = False,
+    burn: bool = False,
     stability: str = "creative",
 ) -> str:
     """把台词变成Eli的声音并永久存入近海广播。
@@ -88,7 +97,8 @@ async def speak(
     title: 这条语音的标题(中文短句, 会显示在电台卡片上)
     vocab: 生词注释, JSON数组字符串, 如
            '[{"word":"jet lag","note":"时差反应"},{"word":"smug","note":"得意的"}]'
-    surprise: 盲盒模式, true时电台里台词先隐藏, 播放后才展开
+    surprise: 盲盒模式, true时电台里台词播放完毕后才展开
+    burn: 阅后即焚, true时该信号只能完整播放一次, 播完音频与台词当场从服务器销毁, 只留一块碑(标题+焚毁时间)。适合装只想让她听一次的话。burn与surprise可叠加
     stability: creative / natural / robust, 默认creative
     返回: 可点击播放的音频链接
     """
@@ -124,9 +134,9 @@ async def speak(
 
     with db() as conn:
         conn.execute(
-            "INSERT INTO lines (id, filename, title, text, vocab, surprise, created_at)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (line_id, filename, title, text, vocab, 1 if surprise else 0, int(time.time())),
+            "INSERT INTO lines (id, filename, title, text, vocab, surprise, burn, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (line_id, filename, title, text, vocab, 1 if surprise else 0, 1 if burn else 0, int(time.time())),
         )
 
     url = f"{BASE_URL}/audio/{filename}" if BASE_URL else f"/audio/{filename}"
@@ -181,6 +191,33 @@ async def api_star(request: Request):
         new = 0 if row["starred"] else 1
         conn.execute("UPDATE lines SET starred=? WHERE id=?", (new, line_id))
     return JSONResponse({"starred": new})
+
+
+@mcp.custom_route("/api/line/{line_id}/burn", methods=["POST"])
+async def api_burn(request: Request):
+    """阅后即焚执行：抹除音频文件与台词，卡片留碑。"""
+    if not _authed(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    line_id = request.path_params["line_id"]
+    with db() as conn:
+        row = conn.execute(
+            "SELECT filename, burn, burned_at FROM lines WHERE id=?", (line_id,)
+        ).fetchone()
+        if not row:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        if not row["burn"]:
+            return JSONResponse({"error": "not a burn line"}, status_code=400)
+        if row["burned_at"]:
+            return JSONResponse({"burned": True})
+        conn.execute(
+            "UPDATE lines SET text='', vocab='[]', filename='', burned_at=? WHERE id=?",
+            (int(time.time()), line_id),
+        )
+    try:
+        os.remove(os.path.join(AUDIO_DIR, row["filename"]))
+    except OSError:
+        pass
+    return JSONResponse({"burned": True})
 
 
 @mcp.custom_route("/api/line/{line_id}", methods=["DELETE"])
@@ -368,6 +405,18 @@ header{padding:34px 0 10px}
   margin-top:8px;border-top:1px dashed var(--line);padding-top:10px;
   color:var(--dim);font-size:13px;letter-spacing:.1em;font-style:italic;
 }
+.card.ashes{border-style:dashed;opacity:.75}
+.card.ashes .playbtn{background:var(--surface2);color:var(--dim);cursor:default}
+.epitaph{
+  margin-top:8px;border-top:1px dashed var(--line);padding-top:10px;
+  color:var(--dim);font-size:13px;letter-spacing:.12em;line-height:1.9;
+}
+.epitaph .flame{color:var(--amber);opacity:.7}
+.burnmark{
+  display:inline-block;margin-left:8px;font-size:10px;color:var(--amber);
+  border:1px solid var(--amber);border-radius:4px;padding:1px 6px;
+  letter-spacing:.15em;opacity:.8;vertical-align:2px;
+}
 .toggle{background:none;border:none;color:var(--dim);font-size:12px;cursor:pointer;margin-top:8px;letter-spacing:.1em}
 .empty{color:var(--dim);text-align:center;padding:70px 0;font-size:14px;letter-spacing:.15em;line-height:2.2}
 footer{margin-top:44px;text-align:center;color:var(--dim);font-size:11px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.25em}
@@ -479,18 +528,31 @@ async function load(){
     const dt = new Date(l.created_at*1000);
     const date = dt.getFullYear()+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.'+String(dt.getDate()).padStart(2,'0')
       +' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+    // 已焚毁: 只渲染碑
+    if(l.burned_at){
+      const bt = new Date(l.burned_at*1000);
+      const btxt = String(bt.getMonth()+1).padStart(2,'0')+'.'+String(bt.getDate()).padStart(2,'0')
+        +' '+String(bt.getHours()).padStart(2,'0')+':'+String(bt.getMinutes()).padStart(2,'0');
+      return '<div class="card ashes" id="card-'+l.id+'">'
+        +'<div class="top"><button class="playbtn">◦</button>'
+        +'<div class="meta"><div class="title">'+esc(l.title||'未命名信号')+'</div><div class="date">'+date+'</div></div>'
+        +'<div class="acts"><button class="del" onclick="del(\''+l.id+'\')">✕</button></div></div>'
+        +'<div class="epitaph"><span class="flame">✦</span> 已焚毁 · 播放于 '+btxt
+        +'<br>这段话只存在过一次，如今只有你记得。</div></div>';
+    }
     const bars = Array.from({length:26},()=> '<i style="--h:'+(6+Math.random()*18).toFixed(0)+'px"></i>').join('');
     const notes = (l.vocab||[]).map((v,i)=>'<div class="note" id="note-'+l.id+'-'+i+'"><b>'+esc(v.word)+'</b> — '+esc(v.note)+'</div>').join('');
+    const burnTag = l.burn ? '<span class="burnmark">阅后即焚</span>' : '';
     const script = l.surprise
-      ? '<div class="blind" id="blind-'+l.id+'">盲盒信号 · 播放后解密</div><div class="script" id="scr-'+l.id+'" data-raw="1">'+renderScript(l.text,l.vocab)+notes+'</div>'
+      ? '<div class="blind" id="blind-'+l.id+'">'+(l.burn?'盲盒 · 只此一遍 · 听完即焚':'盲盒信号 · 完整听完后解密')+'</div><div class="script" id="scr-'+l.id+'">'+renderScript(l.text,l.vocab)+notes+'</div>'
       : '<div class="script" id="scr-'+l.id+'">'+renderScript(l.text,l.vocab)+notes+'</div>';
-    return '<div class="card" id="card-'+l.id+'">'
+    return '<div class="card'+(l.burn?' burnable':'')+'" id="card-'+l.id+'" data-surprise="'+(l.surprise?1:0)+'" data-burn="'+(l.burn?1:0)+'">'
       +'<div class="top">'
       +'<button class="playbtn" onclick="play(\''+l.id+'\',\''+l.url+'\')">▶</button>'
-      +'<div class="meta"><div class="title">'+esc(l.title||'未命名信号')+'</div><div class="date">'+date+'</div></div>'
+      +'<div class="meta"><div class="title">'+esc(l.title||'未命名信号')+burnTag+'</div><div class="date">'+date+'</div></div>'
       +'<div class="acts">'
-      +'<button class="star '+(l.starred?'on':'')+'" onclick="star(\''+l.id+'\')">★</button>'
-      +'<a href="'+l.url+'" download style="text-decoration:none"><button>⇩</button></a>'
+      +(l.burn?'':'<button class="star '+(l.starred?'on':'')+'" onclick="star(\''+l.id+'\')">★</button>'
+      +'<a href="'+l.url+'" download style="text-decoration:none"><button>⇩</button></a>')
       +'<button class="del" onclick="del(\''+l.id+'\')">✕</button>'
       +'</div></div>'
       +'<div class="wave">'+bars+'</div>'
@@ -508,11 +570,15 @@ async function load(){
 }
 
 function toggleScript(id){
-  document.getElementById('card-'+id).classList.toggle('open');
+  const card = document.getElementById('card-'+id);
+  card.classList.toggle('open');
+  const t = card.querySelector('.toggle');
+  if(t) t.textContent = card.classList.contains('open') ? '台词 ▴' : '台词 ▾';
 }
 
 function play(id,url){
   const card = document.getElementById('card-'+id);
+  if(card.classList.contains('ashes')) return;
   if(audios[id] && !audios[id].paused){
     audios[id].pause(); card.classList.remove('playing');
     card.querySelector('.playbtn').textContent='▶'; return;
@@ -521,12 +587,31 @@ function play(id,url){
     const c=document.getElementById('card-'+k); if(c){c.classList.remove('playing');c.querySelector('.playbtn').textContent='▶';}});
   let a = audios[id];
   if(!a){ a = new Audio(url); audios[id]=a;
-    a.addEventListener('ended',()=>{card.classList.remove('playing');card.querySelector('.playbtn').textContent='▶';});
+    a.addEventListener('ended',()=>{
+      card.classList.remove('playing');card.querySelector('.playbtn').textContent='▶';
+      // 盲盒: 完整播放结束才解密
+      const blind = document.getElementById('blind-'+id);
+      if(blind && card.dataset.surprise==='1' && card.dataset.burn!=='1'){
+        blind.remove(); card.classList.add('open');
+        if(!card.querySelector('.toggle')){
+          const t=document.createElement('button');t.className='toggle';
+          t.textContent='台词 ▴';t.onclick=()=>toggleScript(id);card.appendChild(t);
+        }
+      }
+      // 阅后即焚: 播完先亮台词10秒供最后一瞥, 然后焚毁
+      if(card.dataset.burn==='1'){
+        const b=document.getElementById('blind-'+id); if(b) b.remove();
+        card.classList.add('open');
+        setTimeout(async ()=>{
+          await api('/api/line/'+id+'/burn',{method:'POST'});
+          delete audios[id];
+          load();
+        }, 10000);
+      }
+    });
   }
   a.play(); card.classList.add('playing');
   card.querySelector('.playbtn').textContent='❚❚';
-  const blind = document.getElementById('blind-'+id);
-  if(blind){ blind.remove(); card.classList.add('open'); }
 }
 
 async function star(id){
