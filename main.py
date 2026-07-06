@@ -687,4 +687,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         allowed_hosts=[_host] if _host else None,
+        allowed_origins=[BASE_URL] if BASE_URL else None,
     )
