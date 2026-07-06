@@ -678,5 +678,13 @@ if(KEY){
 
 
 if __name__ == "__main__":
+    from urllib.parse import urlparse
+
     port = int(os.environ.get("PORT", 8080))
-    mcp.run(transport="http", host="0.0.0.0", port=port)
+    _host = urlparse(BASE_URL).hostname if BASE_URL else None
+    mcp.run(
+        transport="http",
+        host="0.0.0.0",
+        port=port,
+        allowed_hosts=[_host] if _host else None,
+    )
