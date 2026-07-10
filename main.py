@@ -677,6 +677,301 @@ if(KEY){
 </html>"""
 
 
+@mcp.custom_route("/booth", methods=["GET"])
+async def booth(request: Request):
+    return HTMLResponse(BOOTH_HTML)
+
+
+BOOTH_HTML = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>近海电话亭</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:linear-gradient(180deg,#0E2138 0%,#0B1A2E 45%,#060F1C 100%);
+  color:#C8D8E8;font-family:Georgia,serif;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;position:relative;min-height:100vh;
+}
+.bubble{position:fixed;bottom:-20px;width:5px;height:5px;border-radius:50%;
+  background:rgba(200,216,232,.08);animation:rise linear infinite;pointer-events:none}
+@keyframes rise{0%{transform:translateY(0)}10%{opacity:1}100%{transform:translateY(-110vh) translateX(24px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.bubble{display:none}}
+
+#gate{position:fixed;inset:0;background:rgba(6,15,28,.96);z-index:50;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px}
+#gate .slot{font-family:Consolas,monospace;font-size:10px;letter-spacing:3px;color:#5878a0;text-transform:uppercase}
+#gate h1{font-size:24px;font-weight:400;letter-spacing:8px}
+#gate input{background:rgba(11,26,46,.8);border:1px solid rgba(200,216,232,.16);color:#C8D8E8;
+  padding:12px 18px;border-radius:10px;font-size:16px;width:210px;text-align:center;
+  letter-spacing:.25em;outline:none;font-family:Consolas,monospace}
+#gate input:focus{border-color:#e88890}
+#gate button{background:rgba(232,136,144,.15);border:1px solid rgba(232,136,144,.4);color:#e88890;
+  padding:11px 38px;border-radius:10px;font-size:14px;letter-spacing:4px;cursor:pointer}
+#gate .err{color:#d98880;font-size:12px;height:16px;letter-spacing:1px}
+
+.booth{
+  width:300px;padding:30px 26px 26px;
+  background:rgba(11,26,46,.7);
+  border:1px solid rgba(200,216,232,.16);
+  border-radius:16px;
+  box-shadow:0 0 60px rgba(232,136,144,.06), inset 0 0 40px rgba(0,0,0,.3);
+  backdrop-filter:blur(6px);
+  position:relative;z-index:2;
+}
+.sign{text-align:center;font-family:Consolas,monospace;font-size:10px;letter-spacing:3px;color:#5878a0;text-transform:uppercase;margin-bottom:18px}
+.screen{background:#060F1C;border:1px solid rgba(200,216,232,.12);border-radius:8px;height:64px;margin-bottom:18px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Consolas,monospace;overflow:hidden}
+#num{font-size:22px;letter-spacing:4px;color:#C8D8E8;min-height:26px}
+#status{font-size:10px;letter-spacing:2px;color:#5878a0;margin-top:4px;text-transform:uppercase}
+#status.live{color:#e88890}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.key{background:rgba(200,216,232,.05);border:1px solid rgba(200,216,232,.12);border-radius:10px;color:#C8D8E8;
+  font-family:Consolas,monospace;font-size:18px;padding:13px 0;cursor:pointer;transition:all .15s;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.key:active{transform:scale(.94);background:rgba(232,136,144,.1)}
+.act{display:flex;gap:10px;margin-top:12px}
+.call,.hang{flex:1;border-radius:10px;font-family:Consolas,monospace;font-size:13px;letter-spacing:2px;padding:12px 0;cursor:pointer;transition:all .2s;touch-action:manipulation}
+.call{background:rgba(90,180,120,.12);border:1px solid rgba(90,180,120,.35);color:#7ec897}
+.call:active{background:rgba(90,180,120,.25)}
+.hang{background:rgba(200,80,70,.1);border:1px solid rgba(200,80,70,.3);color:#d98880}
+.hang:active{background:rgba(200,80,70,.22)}
+.hint{text-align:center;font-size:11px;color:#3d5a80;margin-top:16px;letter-spacing:1.5px;font-style:italic}
+.wave{display:none;justify-content:center;align-items:flex-end;gap:3px;height:18px;margin-top:2px}
+.wave i{width:3px;background:#e88890;border-radius:2px;animation:wv 1s ease-in-out infinite}
+@keyframes wv{0%,100%{height:4px}50%{height:16px}}
+.booth.ringing{animation:ring .5s ease infinite}
+@keyframes ring{0%,100%{transform:rotate(0)}25%{transform:rotate(.6deg)}75%{transform:rotate(-.6deg)}}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="slot">COIN SLOT · 投币口</div>
+  <h1>近海电话亭</h1>
+  <input id="coin" type="password" placeholder="投一枚币" autocomplete="off">
+  <div class="err" id="gerr"></div>
+  <button onclick="insertCoin()">投 币</button>
+</div>
+
+<div class="booth" id="booth">
+  <div class="sign">☎ 近海电话亭 · undersea payphone</div>
+  <div class="screen">
+    <div id="num"></div>
+    <div id="status">输入号码 → 拨号</div>
+    <div class="wave" id="wave"><i style="animation-delay:0s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.45s"></i><i style="animation-delay:.6s"></i></div>
+  </div>
+  <div class="pad">
+    <button class="key" onclick="press('1')">1</button>
+    <button class="key" onclick="press('2')">2</button>
+    <button class="key" onclick="press('3')">3</button>
+    <button class="key" onclick="press('4')">4</button>
+    <button class="key" onclick="press('5')">5</button>
+    <button class="key" onclick="press('6')">6</button>
+    <button class="key" onclick="press('7')">7</button>
+    <button class="key" onclick="press('8')">8</button>
+    <button class="key" onclick="press('9')">9</button>
+    <button class="key" onclick="del_()">⌫</button>
+    <button class="key" onclick="press('0')">0</button>
+    <button class="key" onclick="clearNum()">C</button>
+  </div>
+  <div class="act">
+    <button class="call" id="btnCall" onclick="dial()">拨 号</button>
+    <button class="hang" onclick="hangup()">挂 断</button>
+  </div>
+  <div class="hint">深海信号不稳定,但有些号码是活的。</div>
+</div>
+
+<script>
+for(var i=0;i<10;i++){
+  var b=document.createElement('div');b.className='bubble';
+  b.style.left=Math.random()*100+'%';
+  b.style.animationDuration=(9+Math.random()*9)+'s';
+  b.style.animationDelay=(Math.random()*9)+'s';
+  document.body.appendChild(b);
+}
+
+/* ---- coin gate: shares stationKey with the radio ---- */
+function insertCoin(){
+  var k=document.getElementById('coin').value.trim();
+  fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})})
+    .then(function(r){
+      if(r.ok){ localStorage.setItem('stationKey',k); document.getElementById('gate').style.display='none'; }
+      else{ document.getElementById('gerr').textContent='币不对,吐出来了 (⊙_⊙)'; }
+    });
+}
+document.getElementById('coin').addEventListener('keydown',function(e){ if(e.key==='Enter') insertCoin(); });
+(function(){
+  var k=localStorage.getItem('stationKey');
+  if(!k) return;
+  fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})})
+    .then(function(r){ if(r.ok) document.getElementById('gate').style.display='none'; });
+})();
+
+var LINES={
+  '0120':'/audio/1783684729-3f1bdcf270.mp3',
+  '217' :'/audio/1783684740-d63bc5172e.mp3',
+  '520' :'/audio/1783684753-5784499642.mp3',
+  '911' :'/audio/1783685462-51eb2c0e19.mp3'
+};
+var FALLBACK='/audio/1783684721-c18914e30b.mp3';
+var CALLBACKS=['/audio/1783686843-7f911f12b0.mp3','/audio/1783686854-0f72cb89e3.mp3'];
+
+var STATUS={
+  '0120':'● 01.20 ♡',
+  '217' :'● 咚 咚 咚 …',
+  '520' :'● 5·2·0 (¬‿¬)',
+  '911' :'● 紧急频道 (´•̥ ω •̥`)'
+};
+
+var numEl=document.getElementById('num'),
+    stEl=document.getElementById('status'),
+    wave=document.getElementById('wave'),
+    booth=document.getElementById('booth');
+var cur='', busy=false, playing=false;
+var incoming=false, incomingTimer=null, missed=0;
+var dialTimer=null, ringNodes=[], isCallback=false, lastKnown=false;
+var lastCb=-1, cbStreak=0;
+var player=new Audio();
+
+function pickCallback(){
+  var i=Math.floor(Math.random()*CALLBACKS.length);
+  if(i===lastCb && cbStreak>=2){ i=(i+1)%CALLBACKS.length; }
+  cbStreak = (i===lastCb) ? cbStreak+1 : 1;
+  lastCb=i;
+  return CALLBACKS[i];
+}
+function stopRings(){
+  ringNodes.forEach(function(n){ try{ n.g.gain.cancelScheduledValues(0); n.g.gain.value=0; n.o.stop(); }catch(e){} });
+  ringNodes=[];
+}
+function press(d){
+  if(busy) return;
+  if(cur.length>=11) return;
+  cur+=d; numEl.textContent=cur;
+  beep(620+Math.random()*160);
+}
+function del_(){ if(busy) return; cur=cur.slice(0,-1); numEl.textContent=cur; }
+function clearNum(){ if(busy) return; cur=''; numEl.textContent=''; }
+
+var AC=null;
+function beep(f){
+  try{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); }catch(e){return}
+  var o=AC.createOscillator(),g=AC.createGain();
+  o.frequency.value=f; g.gain.value=.06;
+  g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+.12);
+  o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.13);
+}
+function ringtone(n){
+  if(!AC) return;
+  var t=AC.currentTime;
+  for(var i=0;i<n;i++){
+    (function(i){
+      var o=AC.createOscillator(),g=AC.createGain();
+      o.frequency.value=440; g.gain.setValueAtTime(0,t+i*2);
+      g.gain.linearRampToValueAtTime(.07,t+i*2+.05);
+      g.gain.setValueAtTime(.07,t+i*2+1);
+      g.gain.linearRampToValueAtTime(0,t+i*2+1.1);
+      o.connect(g);g.connect(AC.destination);o.start(t+i*2);o.stop(t+i*2+1.2);
+      ringNodes.push({o:o,g:g});
+    })(i);
+  }
+}
+function unlockThen(url, delay, onStart){
+  player.src=url;
+  var p=player.play();
+  if(p&&p.then){ p.then(function(){ player.pause(); player.currentTime=0; }).catch(function(){}); }
+  else { player.pause(); player.currentTime=0; }
+  dialTimer=setTimeout(function(){
+    dialTimer=null;
+    onStart();
+    playing=true;
+    player.currentTime=0;
+    player.play();
+  }, delay);
+}
+function dial(){
+  if(incoming){ answerIncoming(); return; }
+  if(busy||!cur) return;
+  busy=true;
+  var url=LINES[cur]||FALLBACK;
+  var known=!!LINES[cur];
+  lastKnown=known; isCallback=false;
+  var dialed=cur;
+  stEl.textContent='正在接通 ((( ☎ )))'; stEl.className='';
+  booth.classList.add('ringing');
+  if(!AC) beep(1);
+  ringtone(known?1:2);
+  unlockThen(url, known?2600:4600, function(){
+    stopRings();
+    booth.classList.remove('ringing');
+    stEl.textContent=known?(STATUS[dialed]||'● 接通'):'○ 空号 ┐(´д`)┌';
+    stEl.className='live';
+    wave.style.display='flex';
+  });
+  player.onended=function(){ hangup(true); };
+}
+function hangup(natural){
+  if(incoming){ rejectIncoming(); return; }
+  if(dialTimer){ clearTimeout(dialTimer); dialTimer=null; }
+  stopRings();
+  var wasMid = playing && !natural;
+  player.pause(); playing=false;
+  wave.style.display='none';
+  stEl.className='';
+  stEl.textContent=natural?'通话结束 ☎ 可重拨':'通话结束';
+  booth.classList.remove('ringing');
+  busy=false; cur=''; numEl.textContent='';
+  if(wasMid && lastKnown && !isCallback && Math.random()<0.2){
+    setTimeout(startIncoming, 1700);
+  }
+}
+function startIncoming(){
+  if(busy) return;
+  incoming=true; busy=true;
+  booth.classList.add('ringing');
+  ringtone(5);
+  stEl.textContent='来电 ((( ☎ ))) !!'; stEl.className='live';
+  document.getElementById('btnCall').textContent='接 听';
+  incomingTimer=setTimeout(function(){
+    missed++;
+    endIncoming('未接来电 ×'+missed+' (¬_¬)');
+  }, 11000);
+}
+function endIncoming(msg){
+  incoming=false; busy=false;
+  stopRings();
+  clearTimeout(incomingTimer);
+  booth.classList.remove('ringing');
+  document.getElementById('btnCall').textContent='拨 号';
+  stEl.className=''; stEl.textContent=msg;
+}
+function rejectIncoming(){
+  missed++;
+  endIncoming('拒接 …⚡ (。•́︿•̀。) ×'+missed);
+}
+function answerIncoming(){
+  clearTimeout(incomingTimer);
+  stopRings();
+  incoming=false; busy=true; isCallback=true;
+  booth.classList.remove('ringing');
+  document.getElementById('btnCall').textContent='拨 号';
+  stEl.textContent='● 回拨 ( `н´ )'; stEl.className='live';
+  wave.style.display='flex';
+  playing=true;
+  player.src=pickCallback();
+  player.play();
+  player.onended=function(){ hangup(true); };
+}
+</script>
+</body>
+</html>"""
+
+
 if __name__ == "__main__":
     from urllib.parse import urlparse
 
