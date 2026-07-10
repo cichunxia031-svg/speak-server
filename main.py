@@ -687,6 +687,9 @@ BOOTH_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="电话亭">
 <title>近海电话亭</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -718,12 +721,10 @@ body{
 
 /* ---------- dial pad ---------- */
 #numview{
-  text-align:center;padding:34px 20px 6px;min-height:88px;
+  text-align:center;padding:calc(30px + env(safe-area-inset-top)) 20px 6px;min-height:calc(96px + env(safe-area-inset-top));
   font-size:34px;font-weight:400;letter-spacing:1px;
   overflow:hidden;white-space:nowrap;
 }
-#numview:empty::before{content:'近海电话亭';color:#C7C7CC;font-size:20px;letter-spacing:6px}
-#hinttxt{text-align:center;font-size:12px;color:#AEAEB2;height:18px;letter-spacing:1px}
 .padwrap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding-bottom:8px}
 .padrow{display:flex;gap:22px}
 .pkey{
@@ -748,7 +749,7 @@ body{
   background:none;border:none;font-size:24px;color:#8E8E93;cursor:pointer;touch-action:manipulation}
 
 /* ---------- voicemail ---------- */
-#vmhead{padding:24px 20px 10px;display:flex;justify-content:space-between;align-items:center}
+#vmhead{padding:calc(18px + env(safe-area-inset-top)) 20px 10px;display:flex;justify-content:space-between;align-items:center}
 #vmhead h2{font-size:26px;font-weight:700}
 #vmhead .sub{font-size:12px;color:#8E8E93}
 #vmlist{flex:1;overflow-y:auto;padding:0 14px 20px}
@@ -801,10 +802,11 @@ body{
   color:#fff;flex-direction:column;align-items:center;
 }
 #callscr.on{display:flex}
-#callscr .tagline{margin-top:86px;font-size:14px;color:rgba(255,255,255,.65);display:flex;align-items:center;gap:7px}
-#callscr .tagline .chip{font-size:10px;background:rgba(255,255,255,.2);border-radius:4px;padding:1px 5px}
-#callname{font-size:34px;font-weight:500;margin-top:8px;letter-spacing:1px;text-align:center;padding:0 20px}
-#callsub{font-size:13px;color:rgba(255,255,255,.55);margin-top:10px;letter-spacing:1px;font-variant-numeric:tabular-nums}
+#callscr .tagline{margin-top:calc(58px + env(safe-area-inset-top));font-size:15px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:7px}
+#callscr .tagline .chip{font-size:10px;background:rgba(255,255,255,.22);border-radius:4px;padding:1px 5px}
+#callstate{font-variant-numeric:tabular-nums;letter-spacing:.5px}
+#callname{font-size:37px;font-weight:400;margin-top:6px;letter-spacing:1px;text-align:center;padding:0 20px}
+#callsub{font-size:13px;color:rgba(255,255,255,.55);margin-top:10px;letter-spacing:1px}
 #callgrid{
   margin-top:auto;margin-bottom:26px;
   display:grid;grid-template-columns:repeat(3,1fr);gap:26px 40px;
@@ -830,7 +832,7 @@ body{
   color:#fff;flex-direction:column;align-items:center;
 }
 #incscr.on{display:flex}
-#incscr .tagline{margin-top:90px;font-size:14px;color:rgba(255,255,255,.6)}
+#incscr .tagline{margin-top:calc(64px + env(safe-area-inset-top));font-size:14px;color:rgba(255,255,255,.6)}
 #incscr h2{font-size:40px;font-weight:500;margin-top:10px;letter-spacing:2px}
 #incscr .sub{font-size:14px;color:rgba(255,255,255,.55);margin-top:12px;letter-spacing:1px;animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
@@ -870,7 +872,6 @@ body{
   <!-- 拨号键盘 -->
   <div class="screen on" id="screen-dial">
     <div id="numview"></div>
-    <div id="hinttxt">有些号码是活的</div>
     <div class="padwrap">
       <div class="padrow">
         <button class="pkey" onclick="press('1')"><span class="d">1</span><span class="l"></span></button>
@@ -921,12 +922,12 @@ body{
   <div id="callname">0120</div>
   <div id="callsub">近海电话亭</div>
   <div id="callgrid">
-    <button class="cbtn dis"><span class="circ">&#128266;</span><span class="lb">音频</span></button>
-    <button class="cbtn dis"><span class="circ">&#127909;</span><span class="lb">FaceTime</span></button>
-    <button class="cbtn" id="mutebtn" onclick="toggleMute()"><span class="circ">&#128263;</span><span class="lb">静音</span></button>
-    <button class="cbtn dis"><span class="circ">&#8943;</span><span class="lb">更多</span></button>
+    <button class="cbtn dis"><span class="circ"><svg width="25" height="25" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z" fill="currentColor"/><path d="M15.5 8.2a5 5 0 0 1 0 7.6M18.2 5.6a9 9 0 0 1 0 12.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span><span class="lb">音频</span></button>
+    <button class="cbtn dis"><span class="circ"><svg width="27" height="27" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6.5" width="13.5" height="11" rx="3"/><path d="M22 8.6v6.8a.9.9 0 0 1-1.45.72L16.5 13v-2l4.05-3.12A.9.9 0 0 1 22 8.6z"/></svg></span><span class="lb">FaceTime</span></button>
+    <button class="cbtn" id="mutebtn" onclick="toggleMute()"><span class="circ"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z" fill="currentColor"/><path d="M17.6 12a5.6 5.6 0 0 1-11.2 0H4.6a7.4 7.4 0 0 0 6.4 7.3V22h2v-2.7a7.4 7.4 0 0 0 6.4-7.3h-1.8z" fill="currentColor"/><line x1="4.5" y1="3.5" x2="19.5" y2="20.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><span class="lb">静音</span></button>
+    <button class="cbtn dis"><span class="circ"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2.1"/><circle cx="12" cy="12" r="2.1"/><circle cx="19" cy="12" r="2.1"/></svg></span><span class="lb">更多</span></button>
     <button class="cbtn end" onclick="hangup()"><span class="circ"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(135deg)"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.36 11.36 0 0 0 3.56.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.56 1 1 0 0 1-.25 1.01l-2.2 2.22z"/></svg></span><span class="lb">结束</span></button>
-    <button class="cbtn dis"><span class="circ">&#9783;</span><span class="lb">拨号键盘</span></button>
+    <button class="cbtn dis"><span class="circ"><svg width="22" height="26" viewBox="0 0 22 28" fill="currentColor"><circle cx="4" cy="4" r="2.3"/><circle cx="11" cy="4" r="2.3"/><circle cx="18" cy="4" r="2.3"/><circle cx="4" cy="11" r="2.3"/><circle cx="11" cy="11" r="2.3"/><circle cx="18" cy="11" r="2.3"/><circle cx="4" cy="18" r="2.3"/><circle cx="11" cy="18" r="2.3"/><circle cx="18" cy="18" r="2.3"/><circle cx="11" cy="25" r="2.3"/></svg></span><span class="lb">拨号键盘</span></button>
   </div>
 </div>
 
