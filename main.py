@@ -894,7 +894,7 @@ body{
       </div>
       <div class="actrow">
         <span class="sidehole"></span>
-        <button class="callbtn" onclick="dial()">&#9742;</button>
+        <button class="callbtn" onclick="dial()"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.36 11.36 0 0 0 3.56.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.56 1 1 0 0 1-.25 1.01l-2.2 2.22z"/></svg></button>
         <button class="sidehole" onclick="del_()">&#9003;</button>
       </div>
     </div>
@@ -910,8 +910,8 @@ body{
   </div>
 
   <div id="tabbar">
-    <button class="tab on" id="tabDial" onclick="setTab('dial')"><span class="ic">&#9783;</span>拨号键盘</button>
-    <button class="tab" id="tabVm" onclick="setTab('vm')"><span class="ic">&#9993;</span>语音留言<span class="badge" id="vmbadge" style="display:none">0</span></button>
+    <button class="tab on" id="tabDial" onclick="setTab('dial')"><span class="ic"><svg width="20" height="24" viewBox="0 0 22 28" fill="currentColor"><circle cx="4" cy="4" r="2.4"/><circle cx="11" cy="4" r="2.4"/><circle cx="18" cy="4" r="2.4"/><circle cx="4" cy="11" r="2.4"/><circle cx="11" cy="11" r="2.4"/><circle cx="18" cy="11" r="2.4"/><circle cx="4" cy="18" r="2.4"/><circle cx="11" cy="18" r="2.4"/><circle cx="18" cy="18" r="2.4"/><circle cx="11" cy="25" r="2.4"/></svg></span>拨号键盘</button>
+    <button class="tab" id="tabVm" onclick="setTab('vm')"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="6" cy="11.5" r="3.6"/><circle cx="18" cy="11.5" r="3.6"/><line x1="6" y1="15.1" x2="18" y2="15.1"/></svg></span>语音留言<span class="badge" id="vmbadge" style="display:none">0</span></button>
   </div>
 </div>
 
@@ -925,7 +925,7 @@ body{
     <button class="cbtn dis"><span class="circ">&#127909;</span><span class="lb">FaceTime</span></button>
     <button class="cbtn" id="mutebtn" onclick="toggleMute()"><span class="circ">&#128263;</span><span class="lb">静音</span></button>
     <button class="cbtn dis"><span class="circ">&#8943;</span><span class="lb">更多</span></button>
-    <button class="cbtn end" onclick="hangup()"><span class="circ">&#9742;</span><span class="lb">结束</span></button>
+    <button class="cbtn end" onclick="hangup()"><span class="circ"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(135deg)"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.36 11.36 0 0 0 3.56.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.56 1 1 0 0 1-.25 1.01l-2.2 2.22z"/></svg></span><span class="lb">结束</span></button>
     <button class="cbtn dis"><span class="circ">&#9783;</span><span class="lb">拨号键盘</span></button>
   </div>
 </div>
@@ -936,8 +936,8 @@ body{
   <h2>Eli</h2>
   <div class="sub">回拨来电…</div>
   <div id="incrow">
-    <button class="incbtn no" onclick="rejectIncoming()"><span class="circ">&#9742;</span><span class="lb">拒绝</span></button>
-    <button class="incbtn yes" onclick="answerIncoming()"><span class="circ">&#9742;</span><span class="lb">接受</span></button>
+    <button class="incbtn no" onclick="rejectIncoming()"><span class="circ"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(135deg)"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.36 11.36 0 0 0 3.56.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.56 1 1 0 0 1-.25 1.01l-2.2 2.22z"/></svg></span><span class="lb">拒绝</span></button>
+    <button class="incbtn yes" onclick="answerIncoming()"><span class="circ"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.36 11.36 0 0 0 3.56.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.56 1 1 0 0 1-.25 1.01l-2.2 2.22z"/></svg></span><span class="lb">接受</span></button>
   </div>
 </div>
 
@@ -980,6 +980,7 @@ var lastCb=-1, cbStreak=0;
 var player=new Audio();
 var callTick=null, callSec=0;
 var vmPlayingId=null;
+var userMuted=false;
 
 var numEl=document.getElementById('numview');
 
@@ -1064,6 +1065,7 @@ function startTimer(){
 function stopTimer(){ clearInterval(callTick); callTick=null; }
 
 function unlockThen(url, delay, onStart){
+  player.muted=true; /* 解锁阶段静音,杜绝抢跑漏音 */
   player.src=url;
   var p=player.play();
   if(p&&p.then){ p.then(function(){ player.pause(); player.currentTime=0; }).catch(function(){}); }
@@ -1072,6 +1074,7 @@ function unlockThen(url, delay, onStart){
     dialTimer=null;
     onStart();
     playing=true;
+    player.muted=userMuted;
     player.currentTime=0;
     player.play();
   }, delay);
@@ -1085,7 +1088,7 @@ function dial(){
   var known=!!LINES[cur];
   lastKnown=known; isCallback=false;
   var dialed=cur;
-  player.muted=false; syncMute();
+  userMuted=false; syncMute();
   showCall(dialed, known?(NAMES[dialed]||'近海电话亭'):'近海电话亭', '正在呼叫…');
   if(!AC) beep(1);
   ringtone(known?1:2);
@@ -1133,7 +1136,7 @@ function answerIncoming(){
   clearTimeout(incomingTimer); stopRings();
   document.getElementById('incscr').classList.remove('on');
   incoming=false; busy=true; isCallback=true; lastKnown=false;
-  player.muted=false; syncMute();
+  userMuted=false; player.muted=false; syncMute();
   showCall('Eli','回拨 · 近海电话亭','接通');
   startTimer();
   playing=true;
@@ -1144,11 +1147,12 @@ function answerIncoming(){
 
 /* ---------- mute ---------- */
 function toggleMute(){
-  player.muted=!player.muted;
+  userMuted=!userMuted;
+  player.muted=userMuted;
   syncMute();
 }
 function syncMute(){
-  document.getElementById('mutebtn').classList.toggle('lit',player.muted);
+  document.getElementById('mutebtn').classList.toggle('lit',userMuted);
 }
 
 /* ---------- voicemail ---------- */
@@ -1210,7 +1214,7 @@ function playVM(id,url){
   markSeen(id);
   var card=document.getElementById('vm-'+id);
   if(card){ card.classList.add('playing'); card.querySelector('.vmplay').innerHTML='&#10074;&#10074;'; var dot=card.querySelector('.vmdot'); if(dot) dot.classList.add('seen'); }
-  player.muted=false; syncMute();
+  userMuted=false; player.muted=false; syncMute();
   player.src=url;
   player.play();
   player.onended=function(){ stopVM(); renderVM(); };
