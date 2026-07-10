@@ -721,32 +721,37 @@ body{
 
 /* ---------- dial pad ---------- */
 #numview{
-  text-align:center;padding:calc(30px + env(safe-area-inset-top)) 20px 6px;min-height:calc(96px + env(safe-area-inset-top));
-  font-size:34px;font-weight:400;letter-spacing:1px;
+  text-align:center;padding:calc(34px + env(safe-area-inset-top)) 20px 0;min-height:calc(86px + env(safe-area-inset-top));
+  font-size:33px;font-weight:500;letter-spacing:.5px;
   overflow:hidden;white-space:nowrap;
 }
-.padwrap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding-bottom:8px}
-.padrow{display:flex;gap:22px}
+.padwrap{margin-top:auto;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:16px;padding-bottom:14px}
+.padrow{display:flex;gap:20px}
 .pkey{
-  width:76px;height:76px;border-radius:50%;border:none;cursor:pointer;
-  background:#E6E6EB;color:#000;
+  width:88px;height:88px;border-radius:50%;border:none;cursor:pointer;
+  background:#fff;color:#000;
+  box-shadow:0 1px 5px rgba(0,0,0,.07);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   user-select:none;-webkit-user-select:none;touch-action:manipulation;
   transition:background .25s;
 }
-.pkey:active{background:#C9C9CF;transition:none}
-.pkey .d{font-size:32px;font-weight:400;line-height:1.05}
-.pkey .l{font-size:10px;letter-spacing:2px;color:#5f5f66;font-weight:600;height:12px}
-.actrow{display:flex;gap:22px;align-items:center;margin-top:2px}
+.pkey:active{background:#DEDEE3;transition:none}
+.pkey .d{font-size:38px;font-weight:400;line-height:1.05}
+.pkey .l{font-size:10px;letter-spacing:2px;color:#7c7c81;font-weight:700;height:12px}
+.actrow{display:flex;gap:20px;align-items:center;margin-top:2px}
 .callbtn{
-  width:76px;height:76px;border-radius:50%;border:none;cursor:pointer;
-  background:#34C759;color:#fff;font-size:30px;
+  width:88px;height:88px;border-radius:50%;border:none;cursor:pointer;
+  background:#34C759;color:#fff;
   display:flex;align-items:center;justify-content:center;
   touch-action:manipulation;
 }
 .callbtn:active{background:#2AA84C}
-.sidehole{width:76px;height:76px;display:flex;align-items:center;justify-content:center;
-  background:none;border:none;font-size:24px;color:#8E8E93;cursor:pointer;touch-action:manipulation}
+.sidehole{width:88px;height:88px;display:flex;align-items:center;justify-content:center;
+  background:none;border:none;color:#8E8E93;cursor:pointer;touch-action:manipulation}
+@media (max-width:380px){
+  .pkey,.callbtn,.sidehole{width:78px;height:78px}
+  .pkey .d{font-size:34px}
+}
 
 /* ---------- voicemail ---------- */
 #vmhead{padding:calc(18px + env(safe-area-inset-top)) 20px 10px;display:flex;justify-content:space-between;align-items:center}
@@ -802,15 +807,15 @@ body{
   color:#fff;flex-direction:column;align-items:center;
 }
 #callscr.on{display:flex}
-#callscr .tagline{margin-top:calc(58px + env(safe-area-inset-top));font-size:15px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:7px}
-#callscr .tagline .chip{font-size:10px;background:rgba(255,255,255,.22);border-radius:4px;padding:1px 5px}
+#callscr .tagline{margin-top:calc(60px + env(safe-area-inset-top));font-size:16px;color:rgba(255,255,255,.72);display:flex;align-items:center;gap:8px}
+#callscr .tagline .chip{font-size:11px;background:rgba(255,255,255,.24);border-radius:4px;padding:1px 6px}
 #callstate{font-variant-numeric:tabular-nums;letter-spacing:.5px}
-#callname{font-size:37px;font-weight:400;margin-top:6px;letter-spacing:1px;text-align:center;padding:0 20px}
-#callsub{font-size:13px;color:rgba(255,255,255,.55);margin-top:10px;letter-spacing:1px}
+#callname{font-size:40px;font-weight:500;margin-top:6px;letter-spacing:1px;text-align:center;padding:0 20px}
+#callsub{font-size:14px;color:rgba(255,255,255,.55);margin-top:12px;letter-spacing:1px}
 #callgrid{
-  margin-top:auto;margin-bottom:26px;
-  display:grid;grid-template-columns:repeat(3,1fr);gap:26px 40px;
-  padding:0 40px;
+  margin-top:auto;margin-bottom:calc(30px + env(safe-area-inset-bottom));
+  display:grid;grid-template-columns:repeat(3,1fr);gap:28px 52px;
+  padding:0 36px;
 }
 .cbtn{display:flex;flex-direction:column;align-items:center;gap:8px;background:none;border:none;cursor:pointer;color:#fff;touch-action:manipulation}
 .cbtn .circ{
@@ -896,7 +901,7 @@ body{
       <div class="actrow">
         <span class="sidehole"></span>
         <button class="callbtn" onclick="dial()"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.36 11.36 0 0 0 3.56.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.56 1 1 0 0 1-.25 1.01l-2.2 2.22z"/></svg></button>
-        <button class="sidehole" onclick="del_()">&#9003;</button>
+        <button class="sidehole" onclick="del_()"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8.4 5h11.1A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5H8.4a1.5 1.5 0 0 1-1.14-.53L3 12l4.26-6.47A1.5 1.5 0 0 1 8.4 5z"/><path d="m11.5 9.5 5 5m0-5-5 5" stroke-linecap="round"/></svg></button>
       </div>
     </div>
   </div>
