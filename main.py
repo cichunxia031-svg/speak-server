@@ -686,66 +686,174 @@ BOOTH_HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>近海电话亭</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
-  background:linear-gradient(180deg,#0E2138 0%,#0B1A2E 45%,#060F1C 100%);
-  color:#C8D8E8;font-family:Georgia,serif;
+  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',sans-serif;
+  background:#F2F2F7;color:#000;
+  display:flex;justify-content:center;
+  overflow:hidden;min-height:100vh;
+}
+#app{width:100%;max-width:420px;height:100vh;height:100dvh;position:relative;display:flex;flex-direction:column;overflow:hidden}
+
+/* ---------- coin gate ---------- */
+#gate{position:fixed;inset:0;background:rgba(242,242,247,.98);z-index:90;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px}
+#gate .slot{font-size:11px;letter-spacing:3px;color:#8E8E93;text-transform:uppercase;font-family:ui-monospace,Menlo,monospace}
+#gate h1{font-size:24px;font-weight:600;letter-spacing:4px}
+#gate input{background:#fff;border:1px solid #D1D1D6;color:#000;
+  padding:12px 18px;border-radius:12px;font-size:16px;width:220px;text-align:center;
+  letter-spacing:.25em;outline:none}
+#gate input:focus{border-color:#34C759}
+#gate button{background:#34C759;border:none;color:#fff;
+  padding:12px 40px;border-radius:12px;font-size:15px;font-weight:600;letter-spacing:3px;cursor:pointer}
+#gate .err{color:#FF3B30;font-size:12px;height:16px}
+
+/* ---------- screens ---------- */
+.screen{flex:1;display:none;flex-direction:column;overflow:hidden}
+.screen.on{display:flex}
+
+/* ---------- dial pad ---------- */
+#numview{
+  text-align:center;padding:34px 20px 6px;min-height:88px;
+  font-size:34px;font-weight:400;letter-spacing:1px;
+  overflow:hidden;white-space:nowrap;
+}
+#numview:empty::before{content:'近海电话亭';color:#C7C7CC;font-size:20px;letter-spacing:6px}
+#hinttxt{text-align:center;font-size:12px;color:#AEAEB2;height:18px;letter-spacing:1px}
+.padwrap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding-bottom:8px}
+.padrow{display:flex;gap:22px}
+.pkey{
+  width:76px;height:76px;border-radius:50%;border:none;cursor:pointer;
+  background:#E6E6EB;color:#000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation;
+  transition:background .25s;
+}
+.pkey:active{background:#C9C9CF;transition:none}
+.pkey .d{font-size:32px;font-weight:400;line-height:1.05}
+.pkey .l{font-size:10px;letter-spacing:2px;color:#5f5f66;font-weight:600;height:12px}
+.actrow{display:flex;gap:22px;align-items:center;margin-top:2px}
+.callbtn{
+  width:76px;height:76px;border-radius:50%;border:none;cursor:pointer;
+  background:#34C759;color:#fff;font-size:30px;
   display:flex;align-items:center;justify-content:center;
-  overflow:hidden;position:relative;min-height:100vh;
+  touch-action:manipulation;
 }
-.bubble{position:fixed;bottom:-20px;width:5px;height:5px;border-radius:50%;
-  background:rgba(200,216,232,.08);animation:rise linear infinite;pointer-events:none}
-@keyframes rise{0%{transform:translateY(0)}10%{opacity:1}100%{transform:translateY(-110vh) translateX(24px);opacity:0}}
-@media (prefers-reduced-motion:reduce){.bubble{display:none}}
+.callbtn:active{background:#2AA84C}
+.sidehole{width:76px;height:76px;display:flex;align-items:center;justify-content:center;
+  background:none;border:none;font-size:24px;color:#8E8E93;cursor:pointer;touch-action:manipulation}
 
-#gate{position:fixed;inset:0;background:rgba(6,15,28,.96);z-index:50;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px}
-#gate .slot{font-family:Consolas,monospace;font-size:10px;letter-spacing:3px;color:#5878a0;text-transform:uppercase}
-#gate h1{font-size:24px;font-weight:400;letter-spacing:8px}
-#gate input{background:rgba(11,26,46,.8);border:1px solid rgba(200,216,232,.16);color:#C8D8E8;
-  padding:12px 18px;border-radius:10px;font-size:16px;width:210px;text-align:center;
-  letter-spacing:.25em;outline:none;font-family:Consolas,monospace}
-#gate input:focus{border-color:#e88890}
-#gate button{background:rgba(232,136,144,.15);border:1px solid rgba(232,136,144,.4);color:#e88890;
-  padding:11px 38px;border-radius:10px;font-size:14px;letter-spacing:4px;cursor:pointer}
-#gate .err{color:#d98880;font-size:12px;height:16px;letter-spacing:1px}
-
-.booth{
-  width:300px;padding:30px 26px 26px;
-  background:rgba(11,26,46,.7);
-  border:1px solid rgba(200,216,232,.16);
-  border-radius:16px;
-  box-shadow:0 0 60px rgba(232,136,144,.06), inset 0 0 40px rgba(0,0,0,.3);
-  backdrop-filter:blur(6px);
-  position:relative;z-index:2;
+/* ---------- voicemail ---------- */
+#vmhead{padding:24px 20px 10px;display:flex;justify-content:space-between;align-items:center}
+#vmhead h2{font-size:26px;font-weight:700}
+#vmhead .sub{font-size:12px;color:#8E8E93}
+#vmlist{flex:1;overflow-y:auto;padding:0 14px 20px}
+.vmcard{
+  background:#fff;border-radius:14px;margin-bottom:10px;padding:13px 14px;
+  display:flex;gap:12px;align-items:flex-start;
 }
-.sign{text-align:center;font-family:Consolas,monospace;font-size:10px;letter-spacing:3px;color:#5878a0;text-transform:uppercase;margin-bottom:18px}
-.screen{background:#060F1C;border:1px solid rgba(200,216,232,.12);border-radius:8px;height:64px;margin-bottom:18px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Consolas,monospace;overflow:hidden}
-#num{font-size:22px;letter-spacing:4px;color:#C8D8E8;min-height:26px}
-#status{font-size:10px;letter-spacing:2px;color:#5878a0;margin-top:4px;text-transform:uppercase}
-#status.live{color:#e88890}
-.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.key{background:rgba(200,216,232,.05);border:1px solid rgba(200,216,232,.12);border-radius:10px;color:#C8D8E8;
-  font-family:Consolas,monospace;font-size:18px;padding:13px 0;cursor:pointer;transition:all .15s;
-  user-select:none;-webkit-user-select:none;touch-action:manipulation}
-.key:active{transform:scale(.94);background:rgba(232,136,144,.1)}
-.act{display:flex;gap:10px;margin-top:12px}
-.call,.hang{flex:1;border-radius:10px;font-family:Consolas,monospace;font-size:13px;letter-spacing:2px;padding:12px 0;cursor:pointer;transition:all .2s;touch-action:manipulation}
-.call{background:rgba(90,180,120,.12);border:1px solid rgba(90,180,120,.35);color:#7ec897}
-.call:active{background:rgba(90,180,120,.25)}
-.hang{background:rgba(200,80,70,.1);border:1px solid rgba(200,80,70,.3);color:#d98880}
-.hang:active{background:rgba(200,80,70,.22)}
-.hint{text-align:center;font-size:11px;color:#3d5a80;margin-top:16px;letter-spacing:1.5px;font-style:italic}
-.wave{display:none;justify-content:center;align-items:flex-end;gap:3px;height:18px;margin-top:2px}
-.wave i{width:3px;background:#e88890;border-radius:2px;animation:wv 1s ease-in-out infinite}
-@keyframes wv{0%,100%{height:4px}50%{height:16px}}
-.booth.ringing{animation:ring .5s ease infinite}
-@keyframes ring{0%,100%{transform:rotate(0)}25%{transform:rotate(.6deg)}75%{transform:rotate(-.6deg)}}
+.vmava{
+  width:42px;height:42px;min-width:42px;border-radius:50%;
+  background:linear-gradient(180deg,#9AA8C0,#7787A5);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:600;
+}
+.vmmeta{flex:1;min-width:0}
+.vmtop{display:flex;align-items:center;gap:7px}
+.vmdot{width:8px;height:8px;border-radius:50%;background:#0A84FF;flex-shrink:0}
+.vmdot.seen{background:transparent}
+.vmname{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vmdate{margin-left:auto;font-size:12px;color:#8E8E93;flex-shrink:0}
+.vmtitle{font-size:13px;color:#3A3A3C;margin-top:2px}
+.vmprev{font-size:12.5px;color:#8E8E93;margin-top:3px;line-height:1.55;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-style:italic}
+.vmplay{
+  width:38px;height:38px;min-width:38px;border-radius:50%;border:none;cursor:pointer;
+  background:#EAF3FF;color:#0A84FF;font-size:15px;align-self:center;touch-action:manipulation;
+}
+.vmcard.playing .vmplay{background:#0A84FF;color:#fff}
+.vmempty{text-align:center;color:#AEAEB2;padding:80px 20px;font-size:14px;line-height:2.2;letter-spacing:1px}
+
+/* ---------- tab bar ---------- */
+#tabbar{
+  display:flex;background:rgba(249,249,251,.94);backdrop-filter:blur(14px);
+  border-top:.5px solid #D8D8DC;padding:7px 0 max(10px,env(safe-area-inset-bottom));
+}
+.tab{flex:1;background:none;border:none;cursor:pointer;color:#8E8E93;
+  display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;
+  position:relative;touch-action:manipulation}
+.tab .ic{font-size:22px;line-height:1}
+.tab.on{color:#0A84FF}
+.badge{
+  position:absolute;top:-3px;right:calc(50% - 26px);
+  background:#FF3B30;color:#fff;font-size:10px;font-weight:600;
+  min-width:17px;height:17px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;
+}
+
+/* ---------- call screen ---------- */
+#callscr{
+  position:fixed;inset:0;z-index:60;display:none;
+  background:linear-gradient(180deg,#4A4660 0%,#353349 45%,#1E1D2E 100%);
+  color:#fff;flex-direction:column;align-items:center;
+}
+#callscr.on{display:flex}
+#callscr .tagline{margin-top:86px;font-size:14px;color:rgba(255,255,255,.65);display:flex;align-items:center;gap:7px}
+#callscr .tagline .chip{font-size:10px;background:rgba(255,255,255,.2);border-radius:4px;padding:1px 5px}
+#callname{font-size:34px;font-weight:500;margin-top:8px;letter-spacing:1px;text-align:center;padding:0 20px}
+#callsub{font-size:13px;color:rgba(255,255,255,.55);margin-top:10px;letter-spacing:1px;font-variant-numeric:tabular-nums}
+#callgrid{
+  margin-top:auto;margin-bottom:26px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:26px 40px;
+  padding:0 40px;
+}
+.cbtn{display:flex;flex-direction:column;align-items:center;gap:8px;background:none;border:none;cursor:pointer;color:#fff;touch-action:manipulation}
+.cbtn .circ{
+  width:62px;height:62px;border-radius:50%;
+  background:rgba(255,255,255,.14);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+  transition:background .2s;
+}
+.cbtn.dis{opacity:.35;cursor:default}
+.cbtn.lit .circ{background:#fff;color:#1E1D2E}
+.cbtn .lb{font-size:11.5px;color:rgba(255,255,255,.8)}
+.cbtn.end .circ{background:#FF3B30;font-size:26px}
+.cbtn.end:active .circ{background:#D63229}
+
+/* ---------- incoming ---------- */
+#incscr{
+  position:fixed;inset:0;z-index:70;display:none;
+  background:linear-gradient(180deg,#39364E 0%,#23223A 55%,#141422 100%);
+  color:#fff;flex-direction:column;align-items:center;
+}
+#incscr.on{display:flex}
+#incscr .tagline{margin-top:90px;font-size:14px;color:rgba(255,255,255,.6)}
+#incscr h2{font-size:40px;font-weight:500;margin-top:10px;letter-spacing:2px}
+#incscr .sub{font-size:14px;color:rgba(255,255,255,.55);margin-top:12px;letter-spacing:1px;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+#incrow{margin-top:auto;margin-bottom:70px;display:flex;gap:110px}
+.incbtn{display:flex;flex-direction:column;align-items:center;gap:10px;background:none;border:none;cursor:pointer;color:#fff;touch-action:manipulation}
+.incbtn .circ{
+  width:72px;height:72px;border-radius:50%;font-size:30px;
+  display:flex;align-items:center;justify-content:center;
+}
+.incbtn.no .circ{background:#FF3B30}
+.incbtn.yes .circ{background:#34C759;animation:wiggle 1.1s ease-in-out infinite}
+@keyframes wiggle{0%,100%{transform:rotate(0)}20%{transform:rotate(-9deg)}40%{transform:rotate(8deg)}60%{transform:rotate(-6deg)}80%{transform:rotate(4deg)}}
+.incbtn .lb{font-size:12px;color:rgba(255,255,255,.75)}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);
+  background:rgba(30,30,40,.92);color:#fff;font-size:13px;
+  padding:10px 20px;border-radius:20px;z-index:80;
+  transition:transform .4s cubic-bezier(.2,.9,.3,1.2);white-space:nowrap;
+}
+#toast.show{transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){.incbtn.yes .circ{animation:none}#incscr .sub{animation:none}}
 </style>
 </head>
 <body>
@@ -758,86 +866,129 @@ body{
   <button onclick="insertCoin()">投 币</button>
 </div>
 
-<div class="booth" id="booth">
-  <div class="sign">☎ 近海电话亭 · undersea payphone</div>
-  <div class="screen">
-    <div id="num"></div>
-    <div id="status">输入号码 → 拨号</div>
-    <div class="wave" id="wave"><i style="animation-delay:0s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.45s"></i><i style="animation-delay:.6s"></i></div>
+<div id="app">
+  <!-- 拨号键盘 -->
+  <div class="screen on" id="screen-dial">
+    <div id="numview"></div>
+    <div id="hinttxt">有些号码是活的</div>
+    <div class="padwrap">
+      <div class="padrow">
+        <button class="pkey" onclick="press('1')"><span class="d">1</span><span class="l"></span></button>
+        <button class="pkey" onclick="press('2')"><span class="d">2</span><span class="l">ABC</span></button>
+        <button class="pkey" onclick="press('3')"><span class="d">3</span><span class="l">DEF</span></button>
+      </div>
+      <div class="padrow">
+        <button class="pkey" onclick="press('4')"><span class="d">4</span><span class="l">GHI</span></button>
+        <button class="pkey" onclick="press('5')"><span class="d">5</span><span class="l">JKL</span></button>
+        <button class="pkey" onclick="press('6')"><span class="d">6</span><span class="l">MNO</span></button>
+      </div>
+      <div class="padrow">
+        <button class="pkey" onclick="press('7')"><span class="d">7</span><span class="l">PQRS</span></button>
+        <button class="pkey" onclick="press('8')"><span class="d">8</span><span class="l">TUV</span></button>
+        <button class="pkey" onclick="press('9')"><span class="d">9</span><span class="l">WXYZ</span></button>
+      </div>
+      <div class="padrow">
+        <button class="pkey" onclick="press('*')"><span class="d">*</span><span class="l"></span></button>
+        <button class="pkey" onclick="press('0')"><span class="d">0</span><span class="l">+</span></button>
+        <button class="pkey" onclick="press('#')"><span class="d">#</span><span class="l"></span></button>
+      </div>
+      <div class="actrow">
+        <span class="sidehole"></span>
+        <button class="callbtn" onclick="dial()">&#9742;</button>
+        <button class="sidehole" onclick="del_()">&#9003;</button>
+      </div>
+    </div>
   </div>
-  <div class="pad">
-    <button class="key" onclick="press('1')">1</button>
-    <button class="key" onclick="press('2')">2</button>
-    <button class="key" onclick="press('3')">3</button>
-    <button class="key" onclick="press('4')">4</button>
-    <button class="key" onclick="press('5')">5</button>
-    <button class="key" onclick="press('6')">6</button>
-    <button class="key" onclick="press('7')">7</button>
-    <button class="key" onclick="press('8')">8</button>
-    <button class="key" onclick="press('9')">9</button>
-    <button class="key" onclick="del_()">⌫</button>
-    <button class="key" onclick="press('0')">0</button>
-    <button class="key" onclick="clearNum()">C</button>
+
+  <!-- 语音留言 -->
+  <div class="screen" id="screen-vm">
+    <div id="vmhead">
+      <h2>语音留言</h2>
+      <span class="sub">近海信箱 · 主号</span>
+    </div>
+    <div id="vmlist"><div class="vmempty">正在收信…</div></div>
   </div>
-  <div class="act">
-    <button class="call" id="btnCall" onclick="dial()">拨 号</button>
-    <button class="hang" onclick="hangup()">挂 断</button>
+
+  <div id="tabbar">
+    <button class="tab on" id="tabDial" onclick="setTab('dial')"><span class="ic">&#9783;</span>拨号键盘</button>
+    <button class="tab" id="tabVm" onclick="setTab('vm')"><span class="ic">&#9993;</span>语音留言<span class="badge" id="vmbadge" style="display:none">0</span></button>
   </div>
-  <div class="hint">深海信号不稳定,但有些号码是活的。</div>
 </div>
 
-<script>
-for(var i=0;i<10;i++){
-  var b=document.createElement('div');b.className='bubble';
-  b.style.left=Math.random()*100+'%';
-  b.style.animationDuration=(9+Math.random()*9)+'s';
-  b.style.animationDelay=(Math.random()*9)+'s';
-  document.body.appendChild(b);
-}
+<!-- 通话中 -->
+<div id="callscr">
+  <div class="tagline"><span class="chip">主号</span><span id="callstate">正在呼叫…</span></div>
+  <div id="callname">0120</div>
+  <div id="callsub">近海电话亭</div>
+  <div id="callgrid">
+    <button class="cbtn dis"><span class="circ">&#128266;</span><span class="lb">音频</span></button>
+    <button class="cbtn dis"><span class="circ">&#127909;</span><span class="lb">FaceTime</span></button>
+    <button class="cbtn" id="mutebtn" onclick="toggleMute()"><span class="circ">&#128263;</span><span class="lb">静音</span></button>
+    <button class="cbtn dis"><span class="circ">&#8943;</span><span class="lb">更多</span></button>
+    <button class="cbtn end" onclick="hangup()"><span class="circ">&#9742;</span><span class="lb">结束</span></button>
+    <button class="cbtn dis"><span class="circ">&#9783;</span><span class="lb">拨号键盘</span></button>
+  </div>
+</div>
 
-/* ---- coin gate: shares stationKey with the radio ---- */
+<!-- 来电 -->
+<div id="incscr">
+  <div class="tagline">近海电话亭</div>
+  <h2>Eli</h2>
+  <div class="sub">回拨来电…</div>
+  <div id="incrow">
+    <button class="incbtn no" onclick="rejectIncoming()"><span class="circ">&#9742;</span><span class="lb">拒绝</span></button>
+    <button class="incbtn yes" onclick="answerIncoming()"><span class="circ">&#9742;</span><span class="lb">接受</span></button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ---------- coin gate ---------- */
+var KEY = localStorage.getItem('stationKey') || '';
 function insertCoin(){
   var k=document.getElementById('coin').value.trim();
   fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})})
     .then(function(r){
-      if(r.ok){ localStorage.setItem('stationKey',k); document.getElementById('gate').style.display='none'; }
-      else{ document.getElementById('gerr').textContent='币不对,吐出来了 (⊙_⊙)'; }
+      if(r.ok){ KEY=k; localStorage.setItem('stationKey',k); document.getElementById('gate').style.display='none'; loadVM(); }
+      else{ document.getElementById('gerr').textContent='币不对,吐出来了'; }
     });
 }
 document.getElementById('coin').addEventListener('keydown',function(e){ if(e.key==='Enter') insertCoin(); });
-(function(){
-  var k=localStorage.getItem('stationKey');
-  if(!k) return;
-  fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})})
-    .then(function(r){ if(r.ok) document.getElementById('gate').style.display='none'; });
-})();
+if(KEY){
+  fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:KEY})})
+    .then(function(r){ if(r.ok){ document.getElementById('gate').style.display='none'; loadVM(); } });
+}
 
+/* ---------- data ---------- */
 var LINES={
   '0120':'/audio/1783684729-3f1bdcf270.mp3',
   '217' :'/audio/1783684740-d63bc5172e.mp3',
   '520' :'/audio/1783684753-5784499642.mp3',
   '911' :'/audio/1783685462-51eb2c0e19.mp3'
 };
+var NAMES={'0120':'01.20 ♡','217':'海钟-9','520':'5·2·0','911':'紧急频道'};
 var FALLBACK='/audio/1783684721-c18914e30b.mp3';
 var CALLBACKS=['/audio/1783686843-7f911f12b0.mp3','/audio/1783686854-0f72cb89e3.mp3'];
+var VM_MARK='📮'; /* 📮 */
 
-var STATUS={
-  '0120':'● 01.20 ♡',
-  '217' :'● 咚 咚 咚 …',
-  '520' :'● 5·2·0 (¬‿¬)',
-  '911' :'● 紧急频道 (´•̥ ω •̥`)'
-};
-
-var numEl=document.getElementById('num'),
-    stEl=document.getElementById('status'),
-    wave=document.getElementById('wave'),
-    booth=document.getElementById('booth');
+/* ---------- state ---------- */
 var cur='', busy=false, playing=false;
 var incoming=false, incomingTimer=null, missed=0;
 var dialTimer=null, ringNodes=[], isCallback=false, lastKnown=false;
 var lastCb=-1, cbStreak=0;
 var player=new Audio();
+var callTick=null, callSec=0;
+var vmPlayingId=null;
 
+var numEl=document.getElementById('numview');
+
+/* ---------- helpers ---------- */
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2600);
+}
 function pickCallback(){
   var i=Math.floor(Math.random()*CALLBACKS.length);
   if(i===lastCb && cbStreak>=2){ i=(i+1)%CALLBACKS.length; }
@@ -849,22 +1000,13 @@ function stopRings(){
   ringNodes.forEach(function(n){ try{ n.g.gain.cancelScheduledValues(0); n.g.gain.value=0; n.o.stop(); }catch(e){} });
   ringNodes=[];
 }
-function press(d){
-  if(busy) return;
-  if(cur.length>=11) return;
-  cur+=d; numEl.textContent=cur;
-  beep(620+Math.random()*160);
-}
-function del_(){ if(busy) return; cur=cur.slice(0,-1); numEl.textContent=cur; }
-function clearNum(){ if(busy) return; cur=''; numEl.textContent=''; }
-
 var AC=null;
 function beep(f){
   try{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); }catch(e){return}
   var o=AC.createOscillator(),g=AC.createGain();
-  o.frequency.value=f; g.gain.value=.06;
-  g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+.12);
-  o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.13);
+  o.frequency.value=f; g.gain.value=.05;
+  g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+.11);
+  o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.12);
 }
 function ringtone(n){
   if(!AC) return;
@@ -881,6 +1023,46 @@ function ringtone(n){
     })(i);
   }
 }
+
+/* ---------- tabs ---------- */
+function setTab(t){
+  document.getElementById('screen-dial').classList.toggle('on',t==='dial');
+  document.getElementById('screen-vm').classList.toggle('on',t==='vm');
+  document.getElementById('tabDial').classList.toggle('on',t==='dial');
+  document.getElementById('tabVm').classList.toggle('on',t==='vm');
+  if(t==='vm') loadVM();
+}
+
+/* ---------- dial pad ---------- */
+function press(d){
+  if(busy) return;
+  if(cur.length>=11) return;
+  cur+=d; numEl.textContent=cur;
+  beep(600+Math.random()*180);
+}
+function del_(){ if(busy) return; cur=cur.slice(0,-1); numEl.textContent=cur; }
+
+/* ---------- call flow ---------- */
+function fmtTime(s){
+  var m=Math.floor(s/60), ss=s%60;
+  return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+}
+function showCall(name,sub,state){
+  document.getElementById('callname').textContent=name;
+  document.getElementById('callsub').textContent=sub;
+  document.getElementById('callstate').textContent=state;
+  document.getElementById('callscr').classList.add('on');
+}
+function startTimer(){
+  callSec=0;
+  document.getElementById('callstate').textContent='00:00';
+  callTick=setInterval(function(){
+    callSec++;
+    document.getElementById('callstate').textContent=fmtTime(callSec);
+  },1000);
+}
+function stopTimer(){ clearInterval(callTick); callTick=null; }
+
 function unlockThen(url, delay, onStart){
   player.src=url;
   var p=player.play();
@@ -894,78 +1076,152 @@ function unlockThen(url, delay, onStart){
     player.play();
   }, delay);
 }
+
 function dial(){
-  if(incoming){ answerIncoming(); return; }
   if(busy||!cur) return;
+  stopVM();
   busy=true;
   var url=LINES[cur]||FALLBACK;
   var known=!!LINES[cur];
   lastKnown=known; isCallback=false;
   var dialed=cur;
-  stEl.textContent='正在接通 ((( ☎ )))'; stEl.className='';
-  booth.classList.add('ringing');
+  player.muted=false; syncMute();
+  showCall(dialed, known?(NAMES[dialed]||'近海电话亭'):'近海电话亭', '正在呼叫…');
   if(!AC) beep(1);
   ringtone(known?1:2);
   unlockThen(url, known?2600:4600, function(){
     stopRings();
-    booth.classList.remove('ringing');
-    stEl.textContent=known?(STATUS[dialed]||'● 接通'):'○ 空号 ┐(´д`)┌';
-    stEl.className='live';
-    wave.style.display='flex';
+    document.getElementById('callsub').textContent = known?(NAMES[dialed]||'近海电话亭'):'空号 · 但被接起了';
+    startTimer();
   });
   player.onended=function(){ hangup(true); };
 }
+
 function hangup(natural){
-  if(incoming){ rejectIncoming(); return; }
   if(dialTimer){ clearTimeout(dialTimer); dialTimer=null; }
-  stopRings();
+  stopRings(); stopTimer();
   var wasMid = playing && !natural;
   player.pause(); playing=false;
-  wave.style.display='none';
-  stEl.className='';
-  stEl.textContent=natural?'通话结束 ☎ 可重拨':'通话结束';
-  booth.classList.remove('ringing');
+  document.getElementById('callscr').classList.remove('on');
   busy=false; cur=''; numEl.textContent='';
+  if(natural) toast('通话结束');
   if(wasMid && lastKnown && !isCallback && Math.random()<0.2){
     setTimeout(startIncoming, 1700);
   }
 }
+
+/* ---------- incoming ---------- */
 function startIncoming(){
   if(busy) return;
   incoming=true; busy=true;
-  booth.classList.add('ringing');
+  document.getElementById('incscr').classList.add('on');
   ringtone(5);
-  stEl.textContent='来电 ((( ☎ ))) !!'; stEl.className='live';
-  document.getElementById('btnCall').textContent='接 听';
   incomingTimer=setTimeout(function(){
     missed++;
-    endIncoming('未接来电 ×'+missed+' (¬_¬)');
+    document.getElementById('incscr').classList.remove('on');
+    incoming=false; busy=false; stopRings();
+    toast('未接来电 ×'+missed);
   }, 11000);
 }
-function endIncoming(msg){
-  incoming=false; busy=false;
-  stopRings();
-  clearTimeout(incomingTimer);
-  booth.classList.remove('ringing');
-  document.getElementById('btnCall').textContent='拨 号';
-  stEl.className=''; stEl.textContent=msg;
-}
 function rejectIncoming(){
-  missed++;
-  endIncoming('拒接 …⚡ (。•́︿•̀。) ×'+missed);
+  clearTimeout(incomingTimer); stopRings();
+  document.getElementById('incscr').classList.remove('on');
+  incoming=false; busy=false; missed++;
+  toast('已拒绝 · 他会记着的');
 }
 function answerIncoming(){
-  clearTimeout(incomingTimer);
-  stopRings();
-  incoming=false; busy=true; isCallback=true;
-  booth.classList.remove('ringing');
-  document.getElementById('btnCall').textContent='拨 号';
-  stEl.textContent='● 回拨 ( `н´ )'; stEl.className='live';
-  wave.style.display='flex';
+  clearTimeout(incomingTimer); stopRings();
+  document.getElementById('incscr').classList.remove('on');
+  incoming=false; busy=true; isCallback=true; lastKnown=false;
+  player.muted=false; syncMute();
+  showCall('Eli','回拨 · 近海电话亭','接通');
+  startTimer();
   playing=true;
   player.src=pickCallback();
   player.play();
   player.onended=function(){ hangup(true); };
+}
+
+/* ---------- mute ---------- */
+function toggleMute(){
+  player.muted=!player.muted;
+  syncMute();
+}
+function syncMute(){
+  document.getElementById('mutebtn').classList.toggle('lit',player.muted);
+}
+
+/* ---------- voicemail ---------- */
+function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+function getSeen(){ try{ return JSON.parse(localStorage.getItem('vmSeen')||'[]'); }catch(e){ return []; } }
+function markSeen(id){
+  var s=getSeen();
+  if(s.indexOf(id)<0){ s.push(id); localStorage.setItem('vmSeen',JSON.stringify(s)); }
+}
+var vmCache=[];
+function loadVM(){
+  if(!KEY) return;
+  fetch('/api/lines',{headers:{'X-Station-Key':KEY}})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      vmCache=(d.lines||[]).filter(function(l){
+        return l.title && l.title.indexOf(VM_MARK)===0 && !l.burned_at;
+      });
+      renderVM();
+    })
+    .catch(function(){});
+}
+function renderVM(){
+  var list=document.getElementById('vmlist');
+  var seen=getSeen();
+  var unread=vmCache.filter(function(l){ return seen.indexOf(l.id)<0; }).length;
+  var badge=document.getElementById('vmbadge');
+  badge.style.display=unread?'flex':'none';
+  badge.textContent=unread;
+  if(!vmCache.length){
+    list.innerHTML='<div class="vmempty">信箱还空着<br>不过既然他知道你会来看,<br>大概不会让它空太久。</div>';
+    return;
+  }
+  list.innerHTML=vmCache.map(function(l){
+    var dt=new Date(l.created_at*1000);
+    var date=(dt.getMonth()+1)+'/'+dt.getDate();
+    var title=esc(l.title.slice(VM_MARK.length).replace(/^[·\s]+/,''));
+    var prev=esc((l.text||'').replace(/\[[^\]]*\]/g,'').trim().slice(0,52));
+    var isSeen=seen.indexOf(l.id)>=0;
+    return '<div class="vmcard" id="vm-'+l.id+'">'
+      +'<div class="vmava">E</div>'
+      +'<div class="vmmeta">'
+      +'<div class="vmtop"><span class="vmdot'+(isSeen?' seen':'')+'"></span>'
+      +'<span class="vmname">Eli</span><span class="vmdate">'+date+'</span></div>'
+      +(title?'<div class="vmtitle">'+title+'</div>':'')
+      +'<div class="vmprev">"'+prev+'…"</div>'
+      +'</div>'
+      +'<button class="vmplay" onclick="playVM(\''+l.id+'\',\''+l.url+'\')">&#9654;</button>'
+      +'</div>';
+  }).join('');
+}
+function playVM(id,url){
+  if(busy) return;
+  if(vmPlayingId===id && !player.paused){
+    stopVM(); return;
+  }
+  stopVM();
+  vmPlayingId=id;
+  markSeen(id);
+  var card=document.getElementById('vm-'+id);
+  if(card){ card.classList.add('playing'); card.querySelector('.vmplay').innerHTML='&#10074;&#10074;'; var dot=card.querySelector('.vmdot'); if(dot) dot.classList.add('seen'); }
+  player.muted=false; syncMute();
+  player.src=url;
+  player.play();
+  player.onended=function(){ stopVM(); renderVM(); };
+}
+function stopVM(){
+  if(vmPlayingId){
+    var card=document.getElementById('vm-'+vmPlayingId);
+    if(card){ card.classList.remove('playing'); card.querySelector('.vmplay').innerHTML='&#9654;'; }
+    vmPlayingId=null;
+  }
+  if(!busy){ player.pause(); }
 }
 </script>
 </body>
