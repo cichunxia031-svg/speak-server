@@ -1,5 +1,5 @@
 """
-近海广播 Offshore Radio — speak server v2
+近海广播 Offshore Radio — speak server v2  # booth v2.4.1
 在v1基础上升级：永久存储（SQLite+音频文件）、电台网页、密码门、
 台词卡片、生词注释、标星收藏、盲盒模式、积分油表、删除即释放。
 
