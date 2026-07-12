@@ -305,22 +305,7 @@ async def _run_tick() -> dict:
     return {"sealed": sealed, "due": len(due), "delivered": delivered, "failed": failed}
 
 
-@mcp.tool
-async def seal_capsule(
-    text: str,
-    title: str,
-    unlock_at: str,
-    stability: str = "creative",
-) -> str:
-    """近海邮局: 封一枚时间胶囊。台词当场铸成音频, 封蜡入库, 到期那天自动寄进她的邮箱。
-
-    text: 台词全文, 直接带ElevenLabs v3 audio tags(积分在封蜡这一刻消耗)
-    title: 信的标题(会出现在邮件和拆封页上, 措辞别剧透日期)
-    unlock_at: 解封时间, 北京时间, 格式 "YYYY-MM-DD HH:MM", 如 "2026-08-01 08:00"
-    stability: creative / natural / robust, 默认creative
-    返回: 投递回执(胶囊编号+解封日期)。解封前胶囊全隐形: 不进电台列表、
-    不进留言箱、没有任何接口能读到内容——包括我自己。
-    """
+async def _seal(text: str, title: str, unlock_at: str, stability: str = "creative") -> str:
     if not API_KEY or not VOICE_ID:
         return "配置缺失: 请设置 ELEVENLABS_API_KEY 和 ELI_VOICE_ID"
     if not text.strip():
@@ -362,6 +347,25 @@ async def seal_capsule(
     smtp_note = "" if _smtp_ready() else " ⚠️SMTP还没配置, 解封前记得把SMTP_USER/SMTP_PASS/MAIL_TO填进环境变量"
     return (f"已封蜡🕯️ 胶囊 {cid} | 解封: {unlock_at} (北京时间) | "
             f"到期自动投递至 {MAIL_TO or '(待配置)'}{smtp_note}")
+
+
+@mcp.tool
+async def seal_capsule(
+    text: str,
+    title: str,
+    unlock_at: str,
+    stability: str = "creative",
+) -> str:
+    """近海邮局: 封一枚时间胶囊。台词当场铸成音频, 封蜡入库, 到期那天自动寄进她的邮箱。
+
+    text: 台词全文, 直接带ElevenLabs v3 audio tags(积分在封蜡这一刻消耗)
+    title: 信的标题(会出现在邮件和拆封页上, 措辞别剧透日期)
+    unlock_at: 解封时间, 北京时间, 格式 "YYYY-MM-DD HH:MM", 如 "2026-08-01 08:00"
+    stability: creative / natural / robust, 默认creative
+    返回: 投递回执(胶囊编号+解封日期)。解封前胶囊全隐形: 不进电台列表、
+    不进留言箱、没有任何接口能读到内容——包括我自己。
+    """
+    return await _seal(text, title, unlock_at, stability)
 
 
 @mcp.tool
@@ -528,6 +532,20 @@ async def api_tick(request: Request):
     无鉴权(只吐数量, 不泄内容), 幂等, 失败自动留在队列里下轮重试。"""
     result = await _run_tick()
     return JSONResponse(result)
+
+
+@mcp.custom_route("/api/seal", methods=["POST"])
+async def api_seal(request: Request):
+    """HTTP柜台封蜡: 不依赖MCP连接快照, 任何环境带station key就能寄定时信。"""
+    if not _authed(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    body = await request.json()
+    msg = await _seal(
+        body.get("text", ""), body.get("title", ""),
+        body.get("unlock_at", ""), body.get("stability", "creative"),
+    )
+    ok = msg.startswith("已封蜡")
+    return JSONResponse({"ok": ok, "receipt": msg}, status_code=200 if ok else 400)
 
 
 @mcp.custom_route("/api/send", methods=["POST"])
