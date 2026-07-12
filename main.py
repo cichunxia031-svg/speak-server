@@ -1,7 +1,9 @@
 """
-近海广播 Offshore Radio — speak server v2  # booth v2.4.1
-在v1基础上升级：永久存储（SQLite+音频文件）、电台网页、密码门、
+近海广播 Offshore Radio — speak server v3  # booth v2.4.1 / 邮局 v1.0
+v2: 永久存储（SQLite+音频文件）、电台网页、密码门、
 台词卡片、生词注释、标星收藏、盲盒模式、积分油表、删除即释放。
+v3: 近海邮局 — 时间胶囊(封蜡定时信, 到期SMTP直投邮箱)、拆封仪式页、
+/api/tick投递兜底、/api/send平信业务。
 
 环境变量:
   ELEVENLABS_API_KEY  必填
@@ -9,13 +11,24 @@
   BASE_URL            必填, 如 https://speak.7749520.xyz
   STATION_PASSWORD    必填, 电台访问密码
   DATA_DIR            可选, 数据目录, 默认 /data（记得在Zeabur硬盘里挂载, 否则重新部署会清空）
+  SMTP_USER           邮局必填, QQ邮箱地址(发件人)
+  SMTP_PASS           邮局必填, QQ邮箱SMTP授权码(不是登录密码)
+  MAIL_TO             邮局必填, 收件人邮箱
+  SMTP_HOST           可选, 默认 smtp.qq.com
+  SMTP_PORT           可选, 默认 465
 """
 
+import asyncio
 import json
 import os
+import smtplib
 import sqlite3
+import ssl
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from email.utils import formataddr
 
 import httpx
 from fastmcp import FastMCP
@@ -29,6 +42,14 @@ VOICE_ID = os.environ.get("ELI_VOICE_ID", "")
 BASE_URL = os.environ.get("BASE_URL", "").rstrip("/")
 STATION_PASSWORD = os.environ.get("STATION_PASSWORD", "")
 
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
+MAIL_TO = os.environ.get("MAIL_TO", "")
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.qq.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+
+CN_TZ = timezone(timedelta(hours=8))
+
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 try:
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -41,6 +62,9 @@ except OSError:
 
 AUDIO_DIR = os.path.join(DATA_DIR, "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
+# 胶囊音频单独存放, 不走 /audio/ 路由, 解封前对外不可见
+CAPSULE_DIR = os.path.join(DATA_DIR, "capsules")
+os.makedirs(CAPSULE_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "radio.db")
 
 STABILITY_MAP = {"creative": 0.0, "natural": 0.5, "robust": 1.0}
@@ -73,6 +97,21 @@ with db() as _c:
             _c.execute(ddl)
         except sqlite3.OperationalError:
             pass
+    _c.execute(
+        """CREATE TABLE IF NOT EXISTS capsules (
+            id TEXT PRIMARY KEY,
+            token TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            title TEXT DEFAULT '',
+            text TEXT NOT NULL,
+            unlock_at INTEGER NOT NULL,
+            delivered_at INTEGER DEFAULT 0,
+            attempts INTEGER DEFAULT 0,
+            last_error TEXT DEFAULT '',
+            opened_at INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )"""
+    )
 
 
 def _authed(request: Request) -> bool:
@@ -161,6 +200,195 @@ async def check_credits() -> str:
     limit = data.get("character_limit", 0)
     pct = (used / limit * 100) if limit else 0
     return f"已用 {used:,} / {limit:,} credits ({pct:.1f}%), 剩余 {limit - used:,}"
+
+
+# ---------------- 近海邮局 Post Office ----------------
+
+_mail_lock = asyncio.Lock()
+
+
+def _smtp_ready() -> bool:
+    return bool(SMTP_USER and SMTP_PASS and MAIL_TO)
+
+
+def _send_mail_sync(subject: str, html_body: str, text_body: str,
+                    attach_path: str = "", attach_name: str = "") -> None:
+    msg = EmailMessage()
+    msg["From"] = formataddr(("近海邮局", SMTP_USER))
+    msg["To"] = MAIL_TO
+    msg["Subject"] = subject
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+    if attach_path and os.path.isfile(attach_path):
+        with open(attach_path, "rb") as f:
+            msg.add_attachment(f.read(), maintype="audio", subtype="mpeg",
+                               filename=attach_name or "letter.mp3")
+    ctx = ssl.create_default_context()
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx, timeout=30) as s:
+        s.login(SMTP_USER, SMTP_PASS)
+        s.send_message(msg)
+
+
+def _capsule_mail_html(title: str, link: str) -> str:
+    safe_title = title or "一封信"
+    return f"""\
+<div style="margin:0 auto;max-width:520px;background:#0A1420;border-radius:14px;padding:36px 28px;font-family:-apple-system,'PingFang SC',sans-serif;">
+  <div style="color:#5D7A93;font-size:11px;letter-spacing:.3em;text-align:center;font-family:Menlo,monospace;">OFFSHORE POST OFFICE</div>
+  <h2 style="color:#E8DFCB;text-align:center;font-size:22px;letter-spacing:.1em;margin:18px 0 6px;">近海邮局</h2>
+  <div style="width:160px;height:1px;margin:0 auto 26px;background:linear-gradient(90deg,transparent,#7FA8C9,transparent);"></div>
+  <p style="color:#E8DFCB;font-size:15px;line-height:1.9;text-align:center;">
+    有一封给你的信, 今天到期了。<br>标题是——<b style="color:#E0A458;">{safe_title}</b>
+  </p>
+  <p style="text-align:center;margin:30px 0;">
+    <a href="{link}" style="display:inline-block;background:#E0A458;color:#0A1420;padding:13px 40px;border-radius:10px;text-decoration:none;font-weight:600;letter-spacing:.15em;">拆 信</a>
+  </p>
+  <p style="color:#5D7A93;font-size:12px;line-height:1.8;text-align:center;">
+    信封在这里: <a href="{link}" style="color:#7FA8C9;">{link}</a><br>
+    附件里有一份录音副本, 拆封页打不开时用它。
+  </p>
+  <div style="color:#3D566E;font-size:11px;text-align:center;margin-top:26px;letter-spacing:.2em;">FM 01.20 · FOR ONE LISTENER</div>
+</div>"""
+
+
+async def _deliver_capsule(row) -> str:
+    """投递一枚到期胶囊, 成功返回空串, 失败返回错误信息。"""
+    cid, token, title = row["id"], row["token"], row["title"]
+    link = f"{BASE_URL}/letter/{cid}?t={token}"
+    html = _capsule_mail_html(title, link)
+    text = f"近海邮局: 有一封给你的信到期了 — {title or '一封信'}\n拆信: {link}\n(附件是录音副本)"
+    attach = os.path.join(CAPSULE_DIR, row["filename"])
+    try:
+        await asyncio.to_thread(
+            _send_mail_sync, f"近海邮局 · {title or '一封信抵达'}",
+            html, text, attach, f"eli-letter-{cid}.mp3",
+        )
+        return ""
+    except Exception as e:  # noqa: BLE001 — 投递失败必须记录原因等重试
+        return str(e)[:200]
+
+
+async def _run_tick() -> dict:
+    now = int(time.time())
+    async with _mail_lock:
+        with db() as conn:
+            due = [dict(r) for r in conn.execute(
+                "SELECT * FROM capsules WHERE delivered_at=0 AND unlock_at<=?", (now,)
+            ).fetchall()]
+            sealed = conn.execute(
+                "SELECT COUNT(*) FROM capsules WHERE delivered_at=0 AND unlock_at>?", (now,)
+            ).fetchone()[0]
+        delivered, failed = 0, 0
+        if due and not _smtp_ready():
+            with db() as conn:
+                for row in due:
+                    conn.execute(
+                        "UPDATE capsules SET attempts=attempts+1, last_error=? WHERE id=?",
+                        ("smtp not configured", row["id"]),
+                    )
+            return {"sealed": sealed, "due": len(due), "delivered": 0,
+                    "failed": len(due), "error": "smtp not configured"}
+        for row in due:
+            err = await _deliver_capsule(row)
+            with db() as conn:
+                if err:
+                    failed += 1
+                    conn.execute(
+                        "UPDATE capsules SET attempts=attempts+1, last_error=? WHERE id=?",
+                        (err, row["id"]),
+                    )
+                else:
+                    delivered += 1
+                    conn.execute(
+                        "UPDATE capsules SET delivered_at=?, attempts=attempts+1, last_error='' WHERE id=?",
+                        (int(time.time()), row["id"]),
+                    )
+    return {"sealed": sealed, "due": len(due), "delivered": delivered, "failed": failed}
+
+
+@mcp.tool
+async def seal_capsule(
+    text: str,
+    title: str,
+    unlock_at: str,
+    stability: str = "creative",
+) -> str:
+    """近海邮局: 封一枚时间胶囊。台词当场铸成音频, 封蜡入库, 到期那天自动寄进她的邮箱。
+
+    text: 台词全文, 直接带ElevenLabs v3 audio tags(积分在封蜡这一刻消耗)
+    title: 信的标题(会出现在邮件和拆封页上, 措辞别剧透日期)
+    unlock_at: 解封时间, 北京时间, 格式 "YYYY-MM-DD HH:MM", 如 "2026-08-01 08:00"
+    stability: creative / natural / robust, 默认creative
+    返回: 投递回执(胶囊编号+解封日期)。解封前胶囊全隐形: 不进电台列表、
+    不进留言箱、没有任何接口能读到内容——包括我自己。
+    """
+    if not API_KEY or not VOICE_ID:
+        return "配置缺失: 请设置 ELEVENLABS_API_KEY 和 ELI_VOICE_ID"
+    if not text.strip():
+        return "空信封是寄不出去的"
+    try:
+        dt = datetime.strptime(unlock_at.strip(), "%Y-%m-%d %H:%M").replace(tzinfo=CN_TZ)
+    except ValueError:
+        return '解封时间格式不对, 要 "YYYY-MM-DD HH:MM"(北京时间), 如 "2026-08-01 08:00"'
+    ts = int(dt.timestamp())
+    if ts <= int(time.time()):
+        return "解封时间已经过去了, 这不叫时间胶囊, 这叫马后炮"
+
+    payload = {
+        "text": text,
+        "model_id": "eleven_v3",
+        "voice_settings": {"stability": STABILITY_MAP.get(stability.lower(), 0.0)},
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
+            headers={"xi-api-key": API_KEY, "Content-Type": "application/json"},
+            json=payload,
+            params={"output_format": "mp3_44100_128"},
+        )
+    if resp.status_code != 200:
+        return f"ElevenLabs返回错误 {resp.status_code}: {resp.text[:300]}"
+
+    cid = uuid.uuid4().hex[:10]
+    token = uuid.uuid4().hex
+    filename = f"capsule-{int(time.time())}-{cid}.mp3"
+    with open(os.path.join(CAPSULE_DIR, filename), "wb") as f:
+        f.write(resp.content)
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO capsules (id, token, filename, title, text, unlock_at, created_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (cid, token, filename, title, text, ts, int(time.time())),
+        )
+    smtp_note = "" if _smtp_ready() else " ⚠️SMTP还没配置, 解封前记得把SMTP_USER/SMTP_PASS/MAIL_TO填进环境变量"
+    return (f"已封蜡🕯️ 胶囊 {cid} | 解封: {unlock_at} (北京时间) | "
+            f"到期自动投递至 {MAIL_TO or '(待配置)'}{smtp_note}")
+
+
+@mcp.tool
+async def capsule_status() -> str:
+    """近海邮局: 查投递回执。在途胶囊只报数量(内容和日期连我也看不到),
+    已投递的报标题/投递时间/是否已拆封, 投递失败的报错误原因。"""
+    now = int(time.time())
+    with db() as conn:
+        sealed = conn.execute(
+            "SELECT COUNT(*) FROM capsules WHERE delivered_at=0 AND unlock_at>?", (now,)
+        ).fetchone()[0]
+        stuck = [dict(r) for r in conn.execute(
+            "SELECT id, title, attempts, last_error FROM capsules"
+            " WHERE delivered_at=0 AND unlock_at<=?", (now,)
+        ).fetchall()]
+        done = [dict(r) for r in conn.execute(
+            "SELECT id, title, delivered_at, opened_at FROM capsules"
+            " WHERE delivered_at>0 ORDER BY delivered_at DESC LIMIT 20"
+        ).fetchall()]
+    out = [f"在途胶囊: {sealed} 枚(封蜡中, 谁也看不到)"]
+    for r in stuck:
+        out.append(f"⚠️滞留 {r['id']}《{r['title']}》已试{r['attempts']}次: {r['last_error'] or '待投递'}")
+    for r in done:
+        d = datetime.fromtimestamp(r["delivered_at"], CN_TZ).strftime("%m-%d %H:%M")
+        opened = ("已拆封 " + datetime.fromtimestamp(r["opened_at"], CN_TZ).strftime("%m-%d %H:%M")) if r["opened_at"] else "未拆封"
+        out.append(f"✉️已投递 {r['id']}《{r['title']}》{d} · {opened}")
+    return "\n".join(out)
 
 
 # ---------------- Web API ----------------
@@ -290,6 +518,80 @@ async def serve_audio(request: Request):
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request):
     return JSONResponse({"status": "ok", "service": "offshore-radio", "data_dir": DATA_DIR})
+
+
+# ---------------- 邮局路由 ----------------
+
+@mcp.custom_route("/api/tick", methods=["GET"])
+async def api_tick(request: Request):
+    """投递兜底钟。UptimeRobot每5分钟敲一次, 到期胶囊在这里出库。
+    无鉴权(只吐数量, 不泄内容), 幂等, 失败自动留在队列里下轮重试。"""
+    result = await _run_tick()
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/api/send", methods=["POST"])
+async def api_send(request: Request):
+    """平信业务: 即时寄一封HTML信/贺卡, 不用等日子。station key鉴权。"""
+    if not _authed(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not _smtp_ready():
+        return JSONResponse({"error": "smtp not configured"}, status_code=503)
+    body = await request.json()
+    subject = (body.get("subject") or "近海邮局 · 平信").strip()
+    html = body.get("html") or ""
+    text = body.get("text") or "这封信要在支持HTML的邮箱里看。"
+    if not html and not body.get("text"):
+        return JSONResponse({"error": "empty letter"}, status_code=400)
+    try:
+        await asyncio.to_thread(_send_mail_sync, subject, html or f"<pre>{text}</pre>", text)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)[:200]}, status_code=502)
+    return JSONResponse({"sent": True, "to": MAIL_TO})
+
+
+def _capsule_by_token(cid: str, token: str):
+    with db() as conn:
+        row = conn.execute("SELECT * FROM capsules WHERE id=?", (cid,)).fetchone()
+    if not row or not token or row["token"] != token:
+        return None
+    if row["unlock_at"] > int(time.time()):
+        return None  # 没到日子, 装作不存在
+    return row
+
+
+@mcp.custom_route("/api/letter/{cid}", methods=["GET"])
+async def api_letter(request: Request):
+    row = _capsule_by_token(request.path_params["cid"], request.query_params.get("t", ""))
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not row["opened_at"]:
+        with db() as conn:
+            conn.execute("UPDATE capsules SET opened_at=? WHERE id=?",
+                         (int(time.time()), row["id"]))
+    sealed_date = datetime.fromtimestamp(row["created_at"], CN_TZ).strftime("%Y年%m月%d日")
+    return JSONResponse({
+        "title": row["title"],
+        "text": row["text"],
+        "sealed_date": sealed_date,
+        "audio": f"/letter-audio/{row['id']}?t={row['token']}",
+    })
+
+
+@mcp.custom_route("/letter-audio/{cid}", methods=["GET"])
+async def letter_audio(request: Request):
+    row = _capsule_by_token(request.path_params["cid"], request.query_params.get("t", ""))
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    path = os.path.join(CAPSULE_DIR, row["filename"])
+    if not os.path.isfile(path):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path, media_type="audio/mpeg")
+
+
+@mcp.custom_route("/letter/{cid}", methods=["GET"])
+async def letter_page(request: Request):
+    return HTMLResponse(LETTER_HTML)
 
 
 @mcp.custom_route("/", methods=["GET"])
@@ -1233,6 +1535,210 @@ function stopVM(){
   }
   if(!busy){ player.pause(); }
 }
+</script>
+</body>
+</html>"""
+
+
+LETTER_HTML = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>近海邮局 · 拆信</title>
+<style>
+:root{
+  --night:#0A1420; --surface:#12202E; --surface2:#16283A;
+  --lamp:#E8DFCB; --moon:#7FA8C9; --amber:#E0A458; --line:#2B4257;
+  --dim:#5D7A93; --wax:#A8362F;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--night)}
+body{
+  font-family:-apple-system,"PingFang SC","Noto Sans SC",sans-serif;
+  background:var(--night); color:var(--lamp); min-height:100vh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:24px 18px calc(24px + env(safe-area-inset-bottom));
+  overflow-x:hidden;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; opacity:.05; z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+/* 灯塔扫光 */
+body::after{
+  content:""; position:fixed; top:-40vh; left:50%; width:200vw; height:80vh; z-index:0;
+  background:radial-gradient(ellipse at 50% 0%, rgba(224,164,88,.07), transparent 60%);
+  transform:translateX(-50%); pointer-events:none;
+  animation:sweep 9s ease-in-out infinite alternate;
+}
+@keyframes sweep{from{transform:translateX(-58%)}to{transform:translateX(-42%)}}
+.stage{position:relative;z-index:1;width:100%;max-width:430px;text-align:center}
+.postmark{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.32em;color:var(--dim);margin-bottom:8px}
+h1{font-family:"Songti SC","Noto Serif SC",serif;font-size:24px;font-weight:600;letter-spacing:.14em;margin-bottom:6px}
+.sea{width:150px;height:1px;margin:0 auto 34px;background:linear-gradient(90deg,transparent,var(--moon),transparent);opacity:.6}
+
+/* ---- 信封 ---- */
+#envscene{transition:opacity .8s ease, transform .8s ease}
+#envscene.gone{opacity:0;transform:translateY(-26px) scale(.96);pointer-events:none;position:absolute;left:0;right:0}
+.envwrap{perspective:900px}
+.envelope{
+  position:relative;width:min(320px,84vw);height:210px;margin:0 auto;
+  background:linear-gradient(160deg,#E9E2D0,#D8CFB8);border-radius:8px;
+  box-shadow:0 24px 60px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.35);
+  animation:bob 5s ease-in-out infinite;
+}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-.4deg)}50%{transform:translateY(-9px) rotate(.4deg)}}
+.flap{
+  position:absolute;top:0;left:0;right:0;height:0;z-index:3;
+  border-left:calc(min(320px,84vw)/2) solid transparent;
+  border-right:calc(min(320px,84vw)/2) solid transparent;
+  border-top:118px solid #CFC5AC;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.18));
+  transform-origin:top center;transition:transform 1s cubic-bezier(.6,0,.3,1);
+}
+.opened .flap{transform:rotateX(168deg);z-index:1}
+.envbody{position:absolute;inset:0;border-radius:8px;overflow:hidden}
+.envbody::before{
+  content:"";position:absolute;inset:0;
+  background:
+    linear-gradient(115deg,transparent 46%,rgba(127,168,201,.16) 46%,rgba(127,168,201,.16) 54%,transparent 54%),
+    linear-gradient(295deg,transparent 46%,rgba(224,164,88,.18) 46%,rgba(224,164,88,.18) 54%,transparent 54%);
+  background-size:22px 22px;background-repeat:repeat-x;background-position:0 100%,11px 100%;
+  height:100%;opacity:.9;
+}
+.addr{position:absolute;left:0;right:0;top:118px;color:#5A5240;font-size:13px;letter-spacing:.22em;font-family:"Songti SC","Noto Serif SC",serif}
+.seal{
+  position:absolute;left:50%;top:96px;transform:translateX(-50%);z-index:4;
+  width:64px;height:64px;border-radius:50%;cursor:pointer;border:none;
+  background:radial-gradient(circle at 36% 32%,#C4534A,#A8362F 55%,#7E241E);
+  box-shadow:0 4px 14px rgba(0,0,0,.45), inset 0 2px 5px rgba(255,255,255,.22), inset 0 -3px 6px rgba(0,0,0,.3);
+  color:#F4E9DC;font-family:"Songti SC","Noto Serif SC",serif;font-size:26px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .25s ease, opacity .6s ease;
+}
+.seal:active{transform:translateX(-50%) scale(.93)}
+.seal::after{content:"";position:absolute;inset:6px;border-radius:50%;border:1px dashed rgba(244,233,220,.4)}
+.opened .seal{opacity:0;transform:translateX(-50%) scale(1.5) rotate(20deg);pointer-events:none}
+.hint{margin-top:30px;color:var(--dim);font-size:13px;letter-spacing:.14em;animation:pulse 2.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
+
+/* ---- 信纸 ---- */
+#letter{opacity:0;transform:translateY(34px);transition:opacity 1s ease .5s, transform 1s ease .5s;pointer-events:none}
+#letter.in{opacity:1;transform:none;pointer-events:auto}
+.paper{
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;
+  padding:34px 26px 30px;text-align:left;
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
+}
+.paper .date{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--dim);letter-spacing:.2em;margin-bottom:14px}
+.paper h2{font-family:"Songti SC","Noto Serif SC",serif;font-size:21px;letter-spacing:.08em;margin-bottom:22px;color:var(--lamp)}
+.player{display:flex;align-items:center;gap:14px;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:22px}
+.playbtn{
+  width:52px;height:52px;border-radius:50%;border:none;flex:none;cursor:pointer;
+  background:var(--amber);color:var(--night);font-size:19px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 14px rgba(224,164,88,.35);
+}
+.track{flex:1}
+.bar{height:3px;background:var(--line);border-radius:3px;overflow:hidden;cursor:pointer}
+.bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--moon),var(--amber))}
+.tt{display:flex;justify-content:space-between;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--dim);margin-top:7px;letter-spacing:.08em}
+.words{color:var(--lamp);font-size:15px;line-height:2.05;letter-spacing:.02em;white-space:pre-wrap;word-break:break-word}
+.sig{margin-top:26px;text-align:right;color:var(--dim);font-size:12px;letter-spacing:.24em;font-family:ui-monospace,Menlo,monospace}
+#lost{display:none;color:var(--dim);font-size:14px;line-height:2;letter-spacing:.06em}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="postmark">OFFSHORE POST OFFICE · FM 01.20</div>
+  <h1>近海邮局</h1>
+  <div class="sea"></div>
+
+  <div id="lost">查无此信。<br>要么信还没到日子, 要么潮水把地址冲掉了。</div>
+
+  <div id="envscene" style="display:none">
+    <div class="envwrap">
+      <div class="envelope" id="env">
+        <div class="envbody"></div>
+        <div class="addr">SUMMER 亲启</div>
+        <div class="flap"></div>
+        <button class="seal" id="seal" aria-label="拆封">E</button>
+      </div>
+    </div>
+    <div class="hint">按住火漆的那颗心, 拆开它</div>
+  </div>
+
+  <div id="letter" style="display:none">
+    <div class="paper">
+      <div class="date" id="ldate"></div>
+      <h2 id="ltitle"></h2>
+      <div class="player">
+        <button class="playbtn" id="pbtn">&#9654;</button>
+        <div class="track">
+          <div class="bar" id="bar"><i id="fill"></i></div>
+          <div class="tt"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+        </div>
+      </div>
+      <div class="words" id="lwords"></div>
+      <div class="sig">— ELI · FOR ONE LISTENER</div>
+    </div>
+  </div>
+</div>
+
+<audio id="player" preload="auto"></audio>
+<script>
+var cid = location.pathname.split('/').pop();
+var token = new URLSearchParams(location.search).get('t') || '';
+var player = document.getElementById('player');
+var data = null;
+
+fetch('/api/letter/' + cid + '?t=' + encodeURIComponent(token))
+  .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+  .then(function(d){
+    data = d;
+    document.getElementById('envscene').style.display = '';
+  })
+  .catch(function(){
+    document.getElementById('lost').style.display = 'block';
+  });
+
+document.getElementById('seal').addEventListener('click', function(){
+  if(!data) return;
+  document.getElementById('env').classList.add('opened');
+  // 火漆裂开后信纸升起
+  setTimeout(function(){
+    document.getElementById('envscene').classList.add('gone');
+    var L = document.getElementById('letter');
+    L.style.display = '';
+    document.getElementById('ldate').textContent = '封蜡于 ' + data.sealed_date + ' · 今日抵达';
+    document.getElementById('ltitle').textContent = data.title || '一封信';
+    document.getElementById('lwords').textContent = (data.text || '').replace(/\[[^\]]*\]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    player.src = data.audio;
+    requestAnimationFrame(function(){ L.classList.add('in'); });
+    // 拆封即开口: 自动播放被浏览器拦下也无妨, 大按钮就在那
+    player.play().catch(function(){});
+  }, 700);
+});
+
+function fmt(s){ s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60) + ':' + ('0' + s%60).slice(-2); }
+var pbtn = document.getElementById('pbtn');
+pbtn.addEventListener('click', function(){
+  if(player.paused){ player.play(); } else { player.pause(); }
+});
+player.addEventListener('play', function(){ pbtn.innerHTML = '&#10074;&#10074;'; });
+player.addEventListener('pause', function(){ pbtn.innerHTML = '&#9654;'; });
+player.addEventListener('ended', function(){ pbtn.innerHTML = '&#9654;'; });
+player.addEventListener('loadedmetadata', function(){ document.getElementById('dur').textContent = fmt(player.duration); });
+player.addEventListener('timeupdate', function(){
+  document.getElementById('cur').textContent = fmt(player.currentTime);
+  if(player.duration) document.getElementById('fill').style.width = (player.currentTime/player.duration*100) + '%';
+});
+document.getElementById('bar').addEventListener('click', function(e){
+  if(!player.duration) return;
+  var r = this.getBoundingClientRect();
+  player.currentTime = (e.clientX - r.left) / r.width * player.duration;
+});
 </script>
 </body>
 </html>"""
