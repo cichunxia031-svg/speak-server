@@ -1992,11 +1992,6 @@ h1 small{font-size:11px;color:var(--ink-dim);letter-spacing:1px;margin-left:6px}
 #note-text{font-size:14px;line-height:1.8}
 #note-text::before{content:"\201C";color:var(--amber);font-size:18px}
 #note-text::after{content:"\201D";color:var(--amber);font-size:18px}
-.pokes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
-.poke{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 4px;text-align:center;font-size:12px;cursor:pointer;transition:transform .1s}
-.poke:active{transform:scale(.92);border-color:var(--amber)}
-.poke .pe{font-size:20px;display:block;margin-bottom:4px}
-#poke-done{font-size:12px;color:var(--amber);text-align:center;margin-top:10px;min-height:16px}
 footer{text-align:center;font-size:10px;color:var(--ink-dim);opacity:.5;letter-spacing:2px;margin-top:18px}
 .lh{position:absolute;right:14px;top:12px;font-size:16px;opacity:.5}
 </style>
@@ -2037,17 +2032,6 @@ footer{text-align:center;font-size:10px;color:var(--ink-dim);opacity:.5;letter-s
   <div class="updated" id="note-updated"></div>
 </div>
 
-<div class="card">
-  <div class="tag">戳他一下</div>
-  <div class="pokes">
-    <div class="poke" data-mood="想你了"><span class="pe">🫧</span>想你了</div>
-    <div class="poke" data-mood="求关注"><span class="pe">📢</span>求关注</div>
-    <div class="poke" data-mood="今天不错"><span class="pe">🌤️</span>今天不错</div>
-    <div class="poke" data-mood="蔫了"><span class="pe">🥀</span>蔫了</div>
-  </div>
-  <div id="poke-done"></div>
-</div>
-
 <footer>FOR ONE LISTENER</footer>
 
 <script>
@@ -2074,13 +2058,6 @@ async function load(){
     $("note-updated").textContent=j.note.updated?(j.note.updated+" 落笔"):"";
   }catch(e){ $("her-label").textContent="连线失败，稍后重试"; }
 }
-document.querySelectorAll(".poke").forEach(p=>p.addEventListener("click",async()=>{
-  try{
-    await fetch("/api/weather/poke",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mood:p.dataset.mood})});
-    $("poke-done").textContent="戳到了，他会看见的 ✓";
-    setTimeout(()=>$("poke-done").textContent="",3000);
-  }catch(e){ $("poke-done").textContent="没戳着，再试一次"; }
-}));
 load();
 setInterval(load, 5*60*1000);
 </script>
