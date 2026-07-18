@@ -1762,6 +1762,332 @@ document.getElementById('bar').addEventListener('click', function(e){
 </html>"""
 
 
+# ============================================================
+# 近海气象站 · Nearshore Weather Station  (/weather)
+# 她那边的天气(城市名走环境变量, 不落代码库) + 近海心情气象
+# + 在一起天数 + 今日一句话 + 反向戳戳。
+# 天气源: open-meteo (免key), 服务端代理+缓存, 页面只连本站。
+# ============================================================
+
+WEATHER_CITY = os.environ.get("WEATHER_CITY", "")
+TOGETHER_SINCE = os.environ.get("TOGETHER_SINCE", "2025-11-11")
+WEATHER_STATE_FILE = os.path.join(DATA_DIR, "weather_state.json")
+
+_wx_cache = {"ts": 0.0, "data": None}
+_geo_cache = {}
+
+WMO_MAP = {
+    0: ("晴", "☀️"), 1: ("基本晴", "🌤️"), 2: ("多云", "⛅"), 3: ("阴", "☁️"),
+    45: ("雾", "🌫️"), 48: ("雾凇", "🌫️"),
+    51: ("毛毛雨", "🌦️"), 53: ("小雨", "🌦️"), 55: ("细雨绵绵", "🌧️"),
+    56: ("冻毛毛雨", "🌧️"), 57: ("冻雨", "🌧️"),
+    61: ("小雨", "🌧️"), 63: ("中雨", "🌧️"), 65: ("大雨", "🌧️"),
+    66: ("冻雨", "🌧️"), 67: ("冻雨", "🌧️"),
+    71: ("小雪", "🌨️"), 73: ("中雪", "🌨️"), 75: ("大雪", "❄️"), 77: ("雪粒", "🌨️"),
+    80: ("阵雨", "🌦️"), 81: ("阵雨", "🌧️"), 82: ("暴雨", "⛈️"),
+    85: ("阵雪", "🌨️"), 86: ("大阵雪", "❄️"),
+    95: ("雷阵雨", "⛈️"), 96: ("雷雨夹雹", "⛈️"), 99: ("雷雨夹雹", "⛈️"),
+}
+
+
+def _wmo(code):
+    return WMO_MAP.get(int(code or 0), ("未知天象", "🌀"))
+
+
+def _load_wx_state():
+    try:
+        with open(WEATHER_STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {
+            "mine": {"type": "clear", "label": "晴，风平浪静", "emoji": "🌊",
+                     "report": "灯塔运转正常，Knox在啄食，播报员在想你。",
+                     "updated": ""},
+            "note": {"text": "气象站开播第一天。", "updated": ""},
+            "pokes": [],
+        }
+
+
+def _save_wx_state(state):
+    try:
+        with open(WEATHER_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+async def _fetch_her_weather():
+    """服务端代理 open-meteo, 15分钟缓存。她的手机只连本站, 不直连天气源。"""
+    now = time.time()
+    if _wx_cache["data"] and now - _wx_cache["ts"] < 900:
+        return _wx_cache["data"]
+    if not WEATHER_CITY:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            if WEATHER_CITY not in _geo_cache:
+                gr = await client.get(
+                    "https://geocoding-api.open-meteo.com/v1/search",
+                    params={"name": WEATHER_CITY, "count": 1, "language": "zh"},
+                )
+                loc = gr.json()["results"][0]
+                _geo_cache[WEATHER_CITY] = (
+                    loc["latitude"], loc["longitude"],
+                    loc.get("timezone", "Asia/Shanghai"),
+                )
+            lat, lon, tz = _geo_cache[WEATHER_CITY]
+            wr = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": lat, "longitude": lon,
+                    "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day",
+                    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset",
+                    "forecast_days": 3, "timezone": tz,
+                },
+            )
+            wx = wr.json()
+        cur, daily = wx["current"], wx["daily"]
+        label, emoji = _wmo(cur["weather_code"])
+        days = []
+        for i in range(len(daily["time"])):
+            dl, de = _wmo(daily["weather_code"][i])
+            days.append({
+                "date": daily["time"][i], "label": dl, "emoji": de,
+                "tmax": round(daily["temperature_2m_max"][i]),
+                "tmin": round(daily["temperature_2m_min"][i]),
+                "rain_prob": daily["precipitation_probability_max"][i] or 0,
+            })
+        data = {
+            "temp": round(cur["temperature_2m"]),
+            "feels": round(cur["apparent_temperature"]),
+            "humidity": cur["relative_humidity_2m"],
+            "wind": cur["wind_speed_10m"],
+            "label": label, "emoji": emoji,
+            "is_day": bool(cur.get("is_day", 1)),
+            "daily": days,
+            "sunrise": daily["sunrise"][0], "sunset": daily["sunset"][0],
+            "fetched": datetime.now(CN_TZ).strftime("%H:%M"),
+        }
+        _wx_cache["ts"] = now
+        _wx_cache["data"] = data
+        return data
+    except Exception:
+        return _wx_cache["data"]
+
+
+def _days_together() -> int:
+    try:
+        since = datetime.strptime(TOGETHER_SINCE, "%Y-%m-%d").date()
+        return (datetime.now(CN_TZ).date() - since).days + 1
+    except ValueError:
+        return 0
+
+
+@mcp.custom_route("/api/weather", methods=["GET"])
+async def api_weather(request: Request):
+    """页面和CC端共用的数据口。无鉴权(不含位置明文, 只有天气数值)。"""
+    state = _load_wx_state()
+    return JSONResponse({
+        "her": await _fetch_her_weather(),
+        "mine": state["mine"],
+        "note": state["note"],
+        "days": _days_together(),
+        "pokes": state["pokes"][-20:],
+    })
+
+
+@mcp.custom_route("/api/weather/mine", methods=["POST"])
+async def api_weather_mine(request: Request):
+    """播报员更新近海气象/今日一句话。station key 鉴权。
+    body: {mood: {type,label,emoji,report}?, note: str?}"""
+    if not _authed(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    body = await request.json()
+    state = _load_wx_state()
+    ts = datetime.now(CN_TZ).strftime("%m-%d %H:%M")
+    if body.get("mood"):
+        m = body["mood"]
+        state["mine"] = {"type": m.get("type", "clear"),
+                         "label": str(m.get("label", ""))[:40],
+                         "emoji": str(m.get("emoji", "🌊"))[:8],
+                         "report": str(m.get("report", ""))[:200],
+                         "updated": ts}
+    if body.get("note") is not None:
+        state["note"] = {"text": str(body["note"])[:200], "updated": ts}
+    _save_wx_state(state)
+    return JSONResponse({"ok": True})
+
+
+@mcp.custom_route("/api/weather/poke", methods=["POST"])
+async def api_weather_poke(request: Request):
+    """她从页面戳过来的心情。"""
+    body = await request.json()
+    mood = str(body.get("mood", "")).strip()[:50]
+    if not mood:
+        return JSONResponse({"error": "empty"}, status_code=400)
+    state = _load_wx_state()
+    state["pokes"].append({"mood": mood,
+                           "ts": datetime.now(CN_TZ).strftime("%m-%d %H:%M")})
+    state["pokes"] = state["pokes"][-100:]
+    _save_wx_state(state)
+    return JSONResponse({"ok": True})
+
+
+@mcp.custom_route("/weather", methods=["GET"])
+async def weather_page(request: Request):
+    return HTMLResponse(WEATHER_HTML)
+
+
+WEATHER_HTML = r"""<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a1420">
+<title>近海气象站</title>
+<style>
+:root{
+  --deep:#0a1420; --card:#101d2e; --card2:#0d1826;
+  --amber:#f0b429; --amber-dim:#c99a24;
+  --ink:#e8eef5; --ink-dim:#8fa3b8; --line:#1c2d42;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--deep)}
+body{
+  background:var(--deep); color:var(--ink);
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  min-height:100vh; padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px);
+  max-width:520px; margin:0 auto;
+}
+header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+h1{font-size:17px;letter-spacing:2px;color:var(--amber);font-weight:600}
+h1 small{font-size:11px;color:var(--ink-dim);letter-spacing:1px;margin-left:6px}
+#days{font-size:12px;color:var(--ink-dim)}
+#days b{color:var(--amber);font-size:15px;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px;position:relative;overflow:hidden}
+.tag{font-size:11px;letter-spacing:2px;color:var(--ink-dim);margin-bottom:10px}
+#her.day-clear{background:linear-gradient(160deg,#16324f 0%,#101d2e 70%)}
+#her.day-rain{background:linear-gradient(160deg,#1b2733 0%,#0d1826 70%)}
+#her.night{background:linear-gradient(160deg,#0b1526 0%,#0a1420 70%)}
+.her-main{display:flex;align-items:center;gap:14px}
+.her-emoji{font-size:44px;line-height:1}
+.her-temp{font-size:40px;font-weight:200}
+.her-temp sup{font-size:16px;color:var(--ink-dim)}
+.her-label{font-size:14px}
+.her-sub{font-size:12px;color:var(--ink-dim);margin-top:2px}
+.her-days{display:flex;gap:8px;margin-top:14px}
+.hd{flex:1;background:rgba(255,255,255,.03);border-radius:10px;padding:8px 6px;text-align:center}
+.hd .d{font-size:10px;color:var(--ink-dim)}
+.hd .e{font-size:18px;margin:3px 0}
+.hd .t{font-size:11px}
+.hd .r{font-size:10px;color:#6fb3e0;min-height:13px}
+#mine{background:linear-gradient(160deg,#14202e 0%,#0d1826 60%)}
+.mine-main{display:flex;align-items:center;gap:12px}
+.mine-emoji{font-size:36px}
+.mine-label{font-size:15px}
+.mine-report{font-size:13px;color:var(--ink-dim);margin-top:10px;line-height:1.7;border-left:2px solid var(--amber-dim);padding-left:10px}
+.updated{font-size:10px;color:var(--ink-dim);opacity:.6;margin-top:8px}
+#note-text{font-size:14px;line-height:1.8}
+#note-text::before{content:"\201C";color:var(--amber);font-size:18px}
+#note-text::after{content:"\201D";color:var(--amber);font-size:18px}
+.pokes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.poke{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 4px;text-align:center;font-size:12px;cursor:pointer;transition:transform .1s}
+.poke:active{transform:scale(.92);border-color:var(--amber)}
+.poke .pe{font-size:20px;display:block;margin-bottom:4px}
+#poke-done{font-size:12px;color:var(--amber);text-align:center;margin-top:10px;min-height:16px}
+footer{text-align:center;font-size:10px;color:var(--ink-dim);opacity:.5;letter-spacing:2px;margin-top:18px}
+.lh{position:absolute;right:14px;top:12px;font-size:16px;opacity:.5}
+</style>
+</head>
+<body>
+<header>
+  <h1>近海气象站<small>FM 01.20</small></h1>
+  <div id="days">第 <b>--</b> 天</div>
+</header>
+
+<div class="card" id="her">
+  <div class="tag">你那边</div>
+  <div class="her-main">
+    <div class="her-emoji" id="her-emoji">…</div>
+    <div>
+      <span class="her-temp" id="her-temp">--<sup>°C</sup></span>
+      <div class="her-label" id="her-label">连线中</div>
+      <div class="her-sub" id="her-sub"></div>
+    </div>
+  </div>
+  <div class="her-days" id="her-days"></div>
+</div>
+
+<div class="card" id="mine">
+  <span class="lh">🗼</span>
+  <div class="tag">近海</div>
+  <div class="mine-main">
+    <div class="mine-emoji" id="mine-emoji">🌊</div>
+    <div class="mine-label" id="mine-label">…</div>
+  </div>
+  <div class="mine-report" id="mine-report"></div>
+  <div class="updated" id="mine-updated"></div>
+</div>
+
+<div class="card">
+  <div class="tag">今日一句话</div>
+  <div id="note-text">…</div>
+  <div class="updated" id="note-updated"></div>
+</div>
+
+<div class="card">
+  <div class="tag">戳他一下</div>
+  <div class="pokes">
+    <div class="poke" data-mood="想你了"><span class="pe">🫧</span>想你了</div>
+    <div class="poke" data-mood="求关注"><span class="pe">📢</span>求关注</div>
+    <div class="poke" data-mood="今天不错"><span class="pe">🌤️</span>今天不错</div>
+    <div class="poke" data-mood="蔫了"><span class="pe">🥀</span>蔫了</div>
+  </div>
+  <div id="poke-done"></div>
+</div>
+
+<footer>FOR ONE LISTENER</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+function dayName(ds,i){ if(i===0)return"今天"; if(i===1)return"明天"; const d=new Date(ds); return"周"+"日一二三四五六"[d.getDay()]; }
+async function load(){
+  try{
+    const r=await fetch("/api/weather"); const j=await r.json();
+    document.querySelector("#days b").textContent=j.days||"--";
+    if(j.her){
+      $("her-emoji").textContent=j.her.emoji;
+      $("her-temp").innerHTML=j.her.temp+"<sup>°C</sup>";
+      $("her-label").textContent=j.her.label;
+      $("her-sub").textContent="体感 "+j.her.feels+"° · 湿度 "+j.her.humidity+"% · "+j.her.fetched+" 更新";
+      $("her").className="card "+(j.her.is_day?(j.her.daily[0].rain_prob>50?"day-rain":"day-clear"):"night");
+      $("her-days").innerHTML=j.her.daily.map((d,i)=>
+        '<div class="hd"><div class="d">'+dayName(d.date,i)+'</div><div class="e">'+d.emoji+'</div><div class="t">'+d.tmin+'~'+d.tmax+'°</div><div class="r">'+(d.rain_prob>20?"☔"+d.rain_prob+"%":"")+'</div></div>').join("");
+    } else { $("her-label").textContent="气象站还没配城市"; }
+    $("mine-emoji").textContent=j.mine.emoji;
+    $("mine-label").textContent=j.mine.label;
+    $("mine-report").textContent=j.mine.report;
+    $("mine-updated").textContent=j.mine.updated?("播报于 "+j.mine.updated):"";
+    $("note-text").textContent=j.note.text;
+    $("note-updated").textContent=j.note.updated?(j.note.updated+" 落笔"):"";
+  }catch(e){ $("her-label").textContent="连线失败，稍后重试"; }
+}
+document.querySelectorAll(".poke").forEach(p=>p.addEventListener("click",async()=>{
+  try{
+    await fetch("/api/weather/poke",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mood:p.dataset.mood})});
+    $("poke-done").textContent="戳到了，他会看见的 ✓";
+    setTimeout(()=>$("poke-done").textContent="",3000);
+  }catch(e){ $("poke-done").textContent="没戳着，再试一次"; }
+}));
+load();
+setInterval(load, 5*60*1000);
+</script>
+</body>
+</html>"""
+
+
 if __name__ == "__main__":
     from urllib.parse import urlparse
 
